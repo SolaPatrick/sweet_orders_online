@@ -1,0 +1,9 @@
+# Keep secrets and local junk out of the image
+.env
+.git
+.gitignore
+runtime/*
+!runtime/.htaccess
+!runtime/index.html
+public/uploads/products/*
+*.log
