@@ -5,7 +5,8 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
  * Email and SMS notifications (FR6).
  *
  * Email goes out over SMTP (Brevo, Mailtrap, ...) and SMS through textbee
- * (free, sends from an Android phone), Semaphore or Twilio. When a channel
+ * (free, sends from an Android phone), Vonage (free trial credit), Semaphore
+ * or Twilio. When a channel
  * has no credentials in .env the message is still written to notifications_log with status "logged"
  * (test mode), so the flow can be demonstrated without real accounts.
  */
@@ -74,6 +75,7 @@ class Notifier
         $provider = strtolower(getenv('SMS_PROVIDER') ?: 'textbee');
         $configured = [
             'textbee'   => getenv('TEXTBEE_API_KEY') && getenv('TEXTBEE_DEVICE_ID'),
+            'vonage'    => getenv('VONAGE_API_KEY') && getenv('VONAGE_API_SECRET'),
             'twilio'    => getenv('TWILIO_SID') && getenv('TWILIO_TOKEN') && getenv('TWILIO_FROM'),
             'semaphore' => (bool) getenv('SEMAPHORE_API_KEY'),
         ];
@@ -89,6 +91,8 @@ class Notifier
         try {
             if ($provider === 'textbee') {
                 $this->textbee_send($to, $message);
+            } elseif ($provider === 'vonage') {
+                $this->vonage_send($to, $message);
             } elseif ($provider === 'twilio') {
                 $this->twilio_send($to, $message);
             } else {
@@ -137,8 +141,9 @@ class Notifier
         $secure = strtolower(getenv('SMTP_SECURE') ?: ($port === 465 ? 'ssl' : 'tls'));
         $user   = getenv('SMTP_USER');
         $pass   = getenv('SMTP_PASSWORD');
-        $from   = getenv('MAIL_FROM') ?: $user;
-        $from_name = getenv('MAIL_FROM_NAME') ?: "Clayanna's Café";
+        $from   = trim((string) getenv('MAIL_FROM')) ?: $user;
+        // Render keeps quotes typed around a value; .env files do not
+        $from_name = trim((string) getenv('MAIL_FROM_NAME'), " \"'") ?: "Clayanna's Café";
 
         $remote = ($secure === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port;
         $socket = @stream_socket_client($remote, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, stream_context_create());
@@ -167,6 +172,7 @@ class Notifier
 
         $headers = [
             'Date: ' . date('r'),
+            'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . (substr(strrchr($from, '@'), 1) ?: 'sweet-orders') . '>',
             'From: =?UTF-8?B?' . base64_encode($from_name) . "?= <{$from}>",
             "To: <{$to}>",
             'Subject: =?UTF-8?B?' . base64_encode($subject) . '?=',
@@ -174,7 +180,9 @@ class Notifier
             'Content-Type: text/plain; charset=UTF-8',
             'Content-Transfer-Encoding: 8bit',
         ];
-        $data = implode("\r\n", $headers) . "\r\n\r\n" . str_replace("\n.", "\n..", str_replace("\r\n", "\n", $body));
+        // Join with bare \n first, then turn every line ending into \r\n once
+        // (doing it twice gives \r\r\n, which Brevo rejects as a header error).
+        $data = implode("\n", $headers) . "\n\n" . str_replace("\n.", "\n..", str_replace("\r\n", "\n", $body));
         $data = str_replace("\n", "\r\n", $data);
         $this->smtp_cmd($socket, $data . "\r\n.", 250);
         $this->smtp_cmd($socket, 'QUIT', 221);
@@ -238,6 +246,25 @@ class Notifier
         );
         if ($code >= 300) {
             throw new RuntimeException("textbee error ({$code}): " . mb_substr($body, 0, 300));
+        }
+    }
+
+    /** Vonage (free trial credit): texts only the trial's verified test numbers. */
+    private function vonage_send(string $to, string $message): void
+    {
+        $digits = preg_replace('/\D/', '', $to);
+        $intl = strpos($digits, '0') === 0 ? '63' . substr($digits, 1) : $digits;
+        [$code, $body] = $this->http_post('https://rest.nexmo.com/sms/json', http_build_query([
+            'api_key'    => getenv('VONAGE_API_KEY'),
+            'api_secret' => getenv('VONAGE_API_SECRET'),
+            'to'         => $intl,
+            'from'       => getenv('VONAGE_FROM') ?: 'Clayanna',
+            'text'       => $message,
+        ]));
+        $json = json_decode($body, true);
+        $status = $json['messages'][0]['status'] ?? null;
+        if ($code >= 300 || $status !== '0') {
+            throw new RuntimeException("Vonage error ({$code}): " . ($json['messages'][0]['error-text'] ?? mb_substr($body, 0, 300)));
         }
     }
 
