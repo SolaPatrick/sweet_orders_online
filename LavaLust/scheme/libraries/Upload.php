@@ -337,7 +337,7 @@ class Upload
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $this->mime = finfo_file($finfo, $file['tmp_name']);
-        finfo_close($finfo);
+        if (PHP_VERSION_ID < 80500) finfo_close($finfo); // PHP 8.5 frees it automatically
 
         if (!empty($this->mime) && !$this->allowed_mime($this->mime)) {
             $this->upload_errors[] = 'Invalid uploaded file MIME type.';
