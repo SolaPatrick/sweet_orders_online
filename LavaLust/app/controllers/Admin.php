@@ -185,7 +185,7 @@ class Admin extends MY_Api_Controller
         }
         $this->Product_model->delete((int) $id);
         if ($product['image']) {
-            @unlink($this->upload_dir() . basename($product['image']));
+            $this->remove_photo($product['image']);
         }
         $this->json(['message' => "{$product['name']} was deleted."]);
     }
@@ -215,6 +215,20 @@ class Admin extends MY_Api_Controller
         if (!$info) {
             $this->error('Please fix the highlighted fields.', 422, ['image' => 'The file is not a valid JPG, PNG or WEBP image.']);
         }
+        // On Render the photo goes to Cloudinary, since its disk is wiped on restart.
+        $this->call->library('cloudinary');
+        if ($this->cloudinary->enabled()) {
+            try {
+                $url = $this->cloudinary->upload($_FILES['image']['tmp_name']);
+            } catch (RuntimeException $e) {
+                $this->error('The photo could not be saved: ' . $e->getMessage(), 502);
+            }
+            if ($product['image']) {
+                $this->remove_photo($product['image']);
+            }
+            $this->Product_model->update((int) $id, ['image' => $url]);
+            $this->json(['message' => 'Photo uploaded.', 'data' => $this->Product_model->detail((int) $id)]);
+        }
         $dir = $this->upload_dir();
         if (!is_dir($dir)) {
             @mkdir($dir, 0755, true);
@@ -230,10 +244,24 @@ class Admin extends MY_Api_Controller
             $this->error('Please fix the highlighted fields.', 422, ['image' => implode(' ', $this->upload->get_errors())]);
         }
         if ($product['image']) {
-            @unlink($dir . basename($product['image']));
+            $this->remove_photo($product['image']);
         }
         $this->Product_model->update((int) $id, ['image' => $this->upload->get_filename()]);
         $this->json(['message' => 'Photo uploaded.', 'data' => $this->Product_model->detail((int) $id)]);
+    }
+
+    /** Deletes a product photo: a Cloudinary URL or a file in public/uploads/products. */
+    private function remove_photo(string $image): void
+    {
+        if (preg_match('#^https?://#i', $image)) {
+            $this->call->library('cloudinary');
+            $this->cloudinary->delete($image);
+            return;
+        }
+        $file = $this->upload_dir() . basename($image);
+        if (is_file($file)) {
+            @unlink($file);
+        }
     }
 
     private function upload_dir(): string

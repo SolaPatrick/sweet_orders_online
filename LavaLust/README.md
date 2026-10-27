@@ -12,7 +12,8 @@ It covers the five integrations in the project plan:
 | Payment gateway: PayMongo GCash/card (FR5) | `app/libraries/Paymongo.php`, `Payments` webhook |
 | Product catalog (FR2) | `Catalog` controller, `Product_model`, `Category_model` |
 | Delivery/pickup scheduling (FR4) | `Slots` controller, `Slot_model` |
-| Email/SMS notifications (FR6) | `app/libraries/Notifier.php` (SMTP + Semaphore or Twilio) |
+| Email/SMS notifications (FR6) | `app/libraries/Notifier.php` (SMTP + textbee, Vonage, Semaphore or Twilio) |
+| Product photo storage | `app/libraries/Cloudinary.php` (Cloudinary free plan; local `public/uploads` without a key) |
 
 ## Requirements
 
@@ -45,7 +46,7 @@ Optional. Each one falls back to a safe test mode when empty:
 |---|---|
 | `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | Payments run in **simulate mode**: orders are marked paid at once (method "Test payment") |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `CAFE_EMAIL` | Emails are only written to the notification log |
-| `SEMAPHORE_API_KEY` (or `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`) | SMS are only written to the notification log |
+| `TEXTBEE_API_KEY`, `TEXTBEE_DEVICE_ID` (or the Vonage, Semaphore or Twilio keys) | SMS are only written to the notification log |
 
 Never commit `.env`; it is already in `.gitignore`.
 
@@ -128,3 +129,4 @@ database values, and `DB_SSL_CA=ca.pem` (the Aiven CA certificate saved in this 
 
 Free Render services sleep after 15 minutes idle, wipe uploaded photos on restart, and block SMTP ports
 465 and 587 (use a provider that accepts port 2525, such as Brevo).
+Set `CLOUDINARY_URL` so product photos are stored on Cloudinary (free plan) instead of Render's disk.

@@ -9,6 +9,10 @@ if (!function_exists('product_image_url')) {
     /** Public URL of an uploaded product photo. */
     function product_image_url(string $file): string
     {
+        // Photos stored on Cloudinary are saved as their full URL
+        if (preg_match('#^https?://#i', $file)) {
+            return $file;
+        }
         $base = rtrim(getenv('APP_URL') ?: '', '/');
         return $base . '/uploads/products/' . rawurlencode($file);
     }
