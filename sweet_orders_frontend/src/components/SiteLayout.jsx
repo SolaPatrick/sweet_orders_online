@@ -47,7 +47,6 @@ export default function SiteLayout() {
   const location = useLocation()
   const [navPath, setNavPath] = useState(location.pathname)
 
-  // Close the mobile menu when the page changes
   if (navPath !== location.pathname) {
     setNavPath(location.pathname)
     setNavOpen(false)

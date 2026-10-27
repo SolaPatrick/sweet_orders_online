@@ -1,12 +1,13 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
+
 /*
 | -------------------------------------------------------------------
-| URI ROUTING: Sweet Orders Online API
+| URI ROUTING
 | -------------------------------------------------------------------
-| The React app (sweet_orders_frontend) owns the 24 pages in the site
-| map. These are the API routes those pages call, grouped by module.
-| {id} only matches numbers.
+| Here is where you can register web routes for your application.
+|
+|
 */
 /** @var object $router **/
 
@@ -20,8 +21,17 @@ $router->group(['prefix' => '/api'], function ($router) {
     $router->post('/auth/login', 'Auth::login');
     $router->post('/auth/refresh', 'Auth::refresh');
     $router->post('/auth/logout', 'Auth::logout');
-    $router->get('/auth/me', 'Auth::me');
-    $router->put('/auth/me', 'Auth::update_me');
+
+    $router->group(['middleware' => 'auth'], function ($router) {
+        $router->get('/auth/me', 'Auth::me');
+        $router->put('/auth/me', 'Auth::update_me');
+
+        $router->post('/orders', 'Orders::create');
+        $router->get('/orders', 'Orders::index');
+        $router->get('/orders/{id}', 'Orders::show')->where_number('id');
+        $router->post('/orders/{id}/pay', 'Orders::pay')->where_number('id');
+        $router->post('/orders/{id}/cancel', 'Orders::cancel')->where_number('id');
+    });
 
     $router->get('/categories', 'Catalog::categories');
     $router->get('/products', 'Catalog::products');
@@ -30,17 +40,11 @@ $router->group(['prefix' => '/api'], function ($router) {
     $router->get('/slots', 'Slots::index');
     $router->get('/slots/dates', 'Slots::dates');
 
-    $router->post('/orders', 'Orders::create');
-    $router->get('/orders', 'Orders::index');
-    $router->get('/orders/{id}', 'Orders::show')->where_number('id');
-    $router->post('/orders/{id}/pay', 'Orders::pay')->where_number('id');
-    $router->post('/orders/{id}/cancel', 'Orders::cancel')->where_number('id');
-
     $router->post('/payments/webhook', 'Payments::webhook');
 
     $router->post('/contact', 'Contact::send');
 
-    $router->group(['prefix' => '/admin'], function ($router) {
+    $router->group(['prefix' => '/admin', 'middleware' => ['auth', 'admin']], function ($router) {
         $router->get('/dashboard', 'Admin::dashboard');
 
         $router->get('/orders', 'Admin::orders');

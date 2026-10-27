@@ -10,7 +10,6 @@ function addDays(iso, n) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// A7 Time slots and blocked dates
 export default function Slots() {
   const [weekStart, setWeekStart] = useState(todayISO())
   const [type, setType] = useState('pickup')

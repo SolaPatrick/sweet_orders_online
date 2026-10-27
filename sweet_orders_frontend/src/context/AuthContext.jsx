@@ -37,11 +37,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     const tokens = getTokens()
-    try {
-      if (tokens?.refresh_token) await api('/auth/logout', { method: 'POST', body: { refresh_token: tokens.refresh_token } })
-    } catch {
-      // logging out locally is enough
-    }
+    if (tokens?.refresh_token) await api('/auth/logout', { method: 'POST', body: { refresh_token: tokens.refresh_token } }).catch(() => {})
     setTokens(null)
     setUser(null)
   }, [])

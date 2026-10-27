@@ -1,20 +1,10 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/**
- * Email and SMS notifications (FR6).
- *
- * Email goes out over SMTP (Brevo, Mailtrap, ...) and SMS through textbee
- * (free, sends from an Android phone), Vonage (free trial credit), Semaphore
- * or Twilio. When a channel
- * has no credentials in .env the message is still written to notifications_log with status "logged"
- * (test mode), so the flow can be demonstrated without real accounts.
- */
 class Notifier
 {
     private $_lava;
 
-    /** Event => [email subject, message]. {placeholders} come from the order. */
     private const TEMPLATES = [
         'order_placed'      => ['Order {number} received', "Hi {name}, we received your order {number} for {schedule}. Total: {total}. Please complete payment to confirm it."],
         'payment_confirmed' => ['Payment received for {number}', "Hi {name}, we received your payment of {total} for order {number}. We will start preparing it for {schedule}."],
@@ -30,7 +20,6 @@ class Notifier
         $this->_lava = lava_instance();
     }
 
-    /** Sends the email and SMS for an order event and logs both. */
     public function order_event(array $order, string $event): void
     {
         if (!isset(self::TEMPLATES[$event])) {
@@ -58,7 +47,7 @@ class Notifier
 
     public function email(string $to, string $subject, string $body, string $event, $order_id = null, $user_id = null): array
     {
-        if (!getenv('SMTP_HOST')) {
+        if (!config_item('smtp_host')) {
             return $this->log('email', $event, $to, $subject, $body, 'logged', null, $order_id, $user_id);
         }
         try {
@@ -69,15 +58,12 @@ class Notifier
         }
     }
 
-    /** The SMS provider named in SMS_PROVIDER if its keys are filled in, else null (log only). */
     public static function sms_provider(): ?string
     {
-        $provider = strtolower(getenv('SMS_PROVIDER') ?: 'textbee');
+        $provider = config_item('sms_provider');
         $configured = [
-            'textbee'   => getenv('TEXTBEE_API_KEY') && getenv('TEXTBEE_DEVICE_ID'),
-            'vonage'    => getenv('VONAGE_API_KEY') && getenv('VONAGE_API_SECRET'),
-            'twilio'    => getenv('TWILIO_SID') && getenv('TWILIO_TOKEN') && getenv('TWILIO_FROM'),
-            'semaphore' => (bool) getenv('SEMAPHORE_API_KEY'),
+            'textbee' => config_item('textbee_api_key') && config_item('textbee_device_id'),
+            'vonage'  => config_item('vonage_api_key') && config_item('vonage_api_secret'),
         ];
         return !empty($configured[$provider]) ? $provider : null;
     }
@@ -91,12 +77,8 @@ class Notifier
         try {
             if ($provider === 'textbee') {
                 $this->textbee_send($to, $message);
-            } elseif ($provider === 'vonage') {
-                $this->vonage_send($to, $message);
-            } elseif ($provider === 'twilio') {
-                $this->twilio_send($to, $message);
             } else {
-                $this->semaphore_send($to, $message);
+                $this->vonage_send($to, $message);
             }
             return $this->log('sms', $event, $to, null, $message, 'sent', null, $order_id, $user_id);
         } catch (Throwable $e) {
@@ -104,7 +86,6 @@ class Notifier
         }
     }
 
-    /** Sends a logged message again (A9 Resend). */
     public function resend(array $row): array
     {
         return $row['channel'] === 'email'
@@ -130,20 +111,15 @@ class Notifier
         return $row;
     }
 
-    // --------------------------------------------------------------
-    // SMTP (no Composer needed)
-    // --------------------------------------------------------------
-
     private function smtp_send(string $to, string $subject, string $body): void
     {
-        $host   = getenv('SMTP_HOST');
-        $port   = (int) (getenv('SMTP_PORT') ?: 587);
-        $secure = strtolower(getenv('SMTP_SECURE') ?: ($port === 465 ? 'ssl' : 'tls'));
-        $user   = getenv('SMTP_USER');
-        $pass   = getenv('SMTP_PASSWORD');
-        $from   = trim((string) getenv('MAIL_FROM')) ?: $user;
-        // Render keeps quotes typed around a value; .env files do not
-        $from_name = trim((string) getenv('MAIL_FROM_NAME'), " \"'") ?: "Clayanna's Café";
+        $host      = config_item('smtp_host');
+        $port      = config_item('smtp_port');
+        $secure    = config_item('smtp_secure');
+        $user      = config_item('smtp_user');
+        $pass      = config_item('smtp_password');
+        $from      = config_item('mail_from');
+        $from_name = config_item('mail_from_name');
 
         $remote = ($secure === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port;
         $socket = @stream_socket_client($remote, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, stream_context_create());
@@ -180,8 +156,6 @@ class Notifier
             'Content-Type: text/plain; charset=UTF-8',
             'Content-Transfer-Encoding: 8bit',
         ];
-        // Join with bare \n first, then turn every line ending into \r\n once
-        // (doing it twice gives \r\r\n, which Brevo rejects as a header error).
         $data = implode("\n", $headers) . "\n\n" . str_replace("\n.", "\n..", str_replace("\r\n", "\n", $body));
         $data = str_replace("\n", "\r\n", $data);
         $this->smtp_cmd($socket, $data . "\r\n.", 250);
@@ -209,56 +183,29 @@ class Notifier
         return $response;
     }
 
-    // --------------------------------------------------------------
-    // SMS providers
-    // --------------------------------------------------------------
-
-    private function semaphore_send(string $to, string $message): void
-    {
-        $fields = [
-            'apikey'  => getenv('SEMAPHORE_API_KEY'),
-            'number'  => preg_replace('/\D/', '', $to),
-            'message' => $message,
-        ];
-        if (getenv('SEMAPHORE_SENDER_NAME')) {
-            $fields['sendername'] = getenv('SEMAPHORE_SENDER_NAME');
-        }
-        [$code, $body] = $this->http_post('https://api.semaphore.co/api/v4/messages', http_build_query($fields));
-        $json = json_decode($body, true);
-        if ($code >= 300 || !is_array($json) || isset($json['error']) || (isset($json[0]['status']) && strtolower($json[0]['status']) === 'failed')) {
-            throw new RuntimeException("Semaphore error ({$code}): " . mb_substr($body, 0, 300));
-        }
-    }
-
-    /**
-     * textbee.dev (free plan): the SMS is sent by the textbee app on an Android
-     * phone, from that phone's own SIM.
-     */
     private function textbee_send(string $to, string $message): void
     {
         $digits = preg_replace('/\D/', '', $to);
         $e164 = strpos($digits, '0') === 0 ? '+63' . substr($digits, 1) : '+' . $digits;
         [$code, $body] = $this->http_post(
             'https://api.textbee.dev/api/v1/gateway/send-sms',
-            json_encode(['recipients' => [$e164], 'message' => $message, 'deviceId' => getenv('TEXTBEE_DEVICE_ID')], JSON_UNESCAPED_UNICODE),
-            null,
-            ['Content-Type: application/json', 'x-api-key: ' . getenv('TEXTBEE_API_KEY')]
+            json_encode(['recipients' => [$e164], 'message' => $message, 'deviceId' => config_item('textbee_device_id')], JSON_UNESCAPED_UNICODE),
+            ['Content-Type: application/json', 'x-api-key: ' . config_item('textbee_api_key')]
         );
         if ($code >= 300) {
             throw new RuntimeException("textbee error ({$code}): " . mb_substr($body, 0, 300));
         }
     }
 
-    /** Vonage (free trial credit): texts only the trial's verified test numbers. */
     private function vonage_send(string $to, string $message): void
     {
         $digits = preg_replace('/\D/', '', $to);
         $intl = strpos($digits, '0') === 0 ? '63' . substr($digits, 1) : $digits;
         [$code, $body] = $this->http_post('https://rest.nexmo.com/sms/json', http_build_query([
-            'api_key'    => getenv('VONAGE_API_KEY'),
-            'api_secret' => getenv('VONAGE_API_SECRET'),
+            'api_key'    => config_item('vonage_api_key'),
+            'api_secret' => config_item('vonage_api_secret'),
             'to'         => $intl,
-            'from'       => getenv('VONAGE_FROM') ?: 'Clayanna',
+            'from'       => config_item('vonage_from'),
             'text'       => $message,
         ]));
         $json = json_decode($body, true);
@@ -268,22 +215,7 @@ class Notifier
         }
     }
 
-    private function twilio_send(string $to, string $message): void
-    {
-        $digits = preg_replace('/\D/', '', $to);
-        $e164 = strpos($digits, '0') === 0 ? '+63' . substr($digits, 1) : '+' . $digits;
-        $sid = getenv('TWILIO_SID');
-        [$code, $body] = $this->http_post(
-            "https://api.twilio.com/2010-04-01/Accounts/{$sid}/Messages.json",
-            http_build_query(['To' => $e164, 'From' => getenv('TWILIO_FROM'), 'Body' => $message]),
-            $sid . ':' . getenv('TWILIO_TOKEN')
-        );
-        if ($code >= 300) {
-            throw new RuntimeException("Twilio error ({$code}): " . mb_substr($body, 0, 300));
-        }
-    }
-
-    private function http_post(string $url, string $body, ?string $userpwd = null, ?array $headers = null): array
+    private function http_post(string $url, string $body, ?array $headers = null): array
     {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -293,9 +225,6 @@ class Notifier
             CURLOPT_TIMEOUT        => 15,
             CURLOPT_HTTPHEADER     => $headers ?: ['Content-Type: application/x-www-form-urlencoded'],
         ]);
-        if ($userpwd) {
-            curl_setopt($ch, CURLOPT_USERPWD, $userpwd);
-        }
         $response = curl_exec($ch);
         if ($response === false) {
             $error = curl_error($ch);

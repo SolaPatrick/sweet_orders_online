@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field } from '../components/ui'
 
-// C8 Login. Admins go straight to the admin panel.
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()

@@ -1,21 +1,15 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** Payment gateway (FR5). Pages: C6 Order confirmed, C7 Payment failed. */
 class Payments extends MY_Api_Controller
 {
-    /**
-     * POST /api/payments/webhook
-     * Register this URL in PayMongo (Developers > Webhooks) for the event
-     * checkout_session.payment.paid, and put its secret (whsk_...) in
-     * PAYMONGO_WEBHOOK_SECRET.
-     */
     public function webhook()
     {
-        $raw = (string) file_get_contents('php://input');
-        $event = json_decode($raw, true);
-        if (!is_array($event)) {
-            $this->error('Invalid JSON body', 400);
+        $this->api->require_method('POST');
+        $raw = $this->request->raw_body();
+        $event = $this->request->json();
+        if ($raw === '' || !is_array($event)) {
+            $this->api->respond_error('Invalid JSON body', 400);
         }
 
         $attributes = $event['data']['attributes'] ?? [];
@@ -24,9 +18,9 @@ class Payments extends MY_Api_Controller
         $resource = $attributes['data'] ?? ($event['data']['data'] ?? []);
 
         $this->call->library('paymongo');
-        $header = $_SERVER['HTTP_PAYMONGO_SIGNATURE'] ?? '';
+        $header = (string) $this->request->header('Paymongo-Signature');
         if (!$this->paymongo->verify_signature($raw, $header, $livemode)) {
-            $this->error('Invalid signature', 401);
+            $this->api->respond_error('Invalid signature', 401);
         }
 
         if ($type === 'checkout_session.payment.paid') {
@@ -42,7 +36,6 @@ class Payments extends MY_Api_Controller
             }
         }
 
-        // Always answer 200 so PayMongo does not retry an event we have seen.
-        $this->json(['received' => true, 'type' => $type]);
+        $this->api->respond(['received' => true, 'type' => $type]);
     }
 }

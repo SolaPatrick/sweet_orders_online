@@ -3,7 +3,6 @@ import ProductCard from '../components/ProductCard'
 import { ErrorBox, Loader, useApi } from '../components/ui'
 import heroImg from '../assets/hero.svg'
 
-// C1 Home
 export default function Home() {
   const categories = useApi('/categories')
   const featured = useApi('/products', { featured: 1, per_page: 4 })

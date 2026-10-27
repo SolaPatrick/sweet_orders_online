@@ -83,15 +83,6 @@ define('PUBLIC_DIR', $public_folder);
  * Setup done? Then Hurray!
  * ------------------------------------------------------
  */
-/*
- *---------------------------------------------------------------
- * SUBFOLDER INSTALLS (XAMPP)
- *---------------------------------------------------------------
- * At http://localhost/sweet_orders_backend/ the root .htaccess sends
- * requests to public/index.php, so SCRIPT_NAME contains "/public" while
- * the requested URL does not. LavaLust strips the SCRIPT_NAME folder from
- * the URL to find the route, so drop "/public" to keep the two in step.
- */
 $script_dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
 $request_path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 if (substr($script_dir, -7) === '/public' && strpos($request_path, $script_dir . '/') !== 0 && $request_path !== $script_dir) {

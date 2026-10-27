@@ -1,4 +1,3 @@
-/* Sweet Orders Online: page layouts (customer site and admin panel). */
 .container {
   width: 100%;
   max-width: 1120px;
@@ -88,7 +87,6 @@
   top: 80px;
 }
 
-/* Header & footer */
 .site {
   min-height: 100vh;
   display: flex;
@@ -202,7 +200,6 @@
   text-decoration: none;
 }
 
-/* Home */
 .hero {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
@@ -255,7 +252,6 @@
   font-size: 1.4rem;
 }
 
-/* Products */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -350,7 +346,6 @@
   text-align: right;
 }
 
-/* Results, timeline, errors */
 .result {
   text-align: center;
   display: flex;
@@ -473,7 +468,6 @@
   font-size: 0.88rem;
 }
 
-/* Admin */
 .admin {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
@@ -624,7 +618,6 @@
   outline: 1px solid var(--primary);
 }
 
-/* Phones and tablets */
 @media (max-width: 900px) {
   .two-col,
   .two-col.wide-left,

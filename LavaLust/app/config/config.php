@@ -113,8 +113,8 @@ $config['proxy_enabled']           = FALSE;
 |   3 = All
 |
 */
-$config['log_threshold']            = 0;
-$config['log_dir']                  = 'runtime/logs/';
+$config['log_threshold']            = 1;
+$config['log_dir']                  = ROOT_DIR . 'runtime/logs/';
 
 /*
 |--------------------------------------------------------------------------
@@ -397,7 +397,7 @@ $config['security_headers'] = [
     'coop'               => 'same-origin',
 
     // ── API ──
-    'api_max_body' => 3145728, // 3 MB: product photos are up to 2 MB
+    'api_max_body' => 3145728,
     'cors' => [
         'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) getenv('CORS_ORIGINS'))))),
         'credentials'     => false,

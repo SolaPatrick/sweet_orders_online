@@ -9,7 +9,6 @@ export function pesoExact(amount) {
 
 function toDate(value) {
   if (!value) return null
-  // MySQL "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD" in Philippine time
   return new Date(String(value).replace(' ', 'T'))
 }
 
@@ -35,7 +34,6 @@ export function timeOnly(value) {
   return d ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''
 }
 
-/** "10:00" -> "10:00 AM" */
 export function clock(hhmm) {
   if (!hhmm) return ''
   const [h, m] = hhmm.split(':').map(Number)
@@ -83,7 +81,6 @@ export function optionText(options = []) {
   return options.map((o) => o.option_name || o.name).join(' · ')
 }
 
-/** Payment method for display: gcash → GCash, simulated → Test payment. */
 export function methodLabel(method) {
   const names = { gcash: 'GCash', card: 'Card', paymaya: 'Maya', grab_pay: 'GrabPay', simulated: 'Test payment' }
   return method ? names[method] || method : '—'

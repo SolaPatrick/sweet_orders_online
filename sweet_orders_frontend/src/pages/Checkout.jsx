@@ -12,7 +12,6 @@ function localDate(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// C5 Checkout: pickup or delivery, date and time slot, contact, pay
 export default function Checkout() {
   const { user } = useAuth()
   const cart = useCart()
@@ -32,7 +31,6 @@ export default function Checkout() {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  // Dates with open places for the chosen type
   useEffect(() => {
     let alive = true
     api('/slots/dates', { query: { fulfillment, days: 14 } })
@@ -50,7 +48,6 @@ export default function Checkout() {
     }
   }, [fulfillment, cart.leadHours])
 
-  // Slots for the chosen date
   const slotsKey = `${date}|${fulfillment}|${cart.leadHours}`
   useEffect(() => {
     if (!date) return
@@ -63,7 +60,6 @@ export default function Checkout() {
     }
   }, [date, fulfillment, cart.leadHours, slotsKey])
 
-  // Results for an older choice count as still loading
   const dates = datesRes?.fulfillment === fulfillment ? datesRes.data : null
   const slots = !date ? [] : slotsRes?.key === slotsKey ? slotsRes.data : null
 
@@ -80,12 +76,10 @@ export default function Checkout() {
     )
   }
 
-  // Days before the cart's lead time cannot be picked
   const earliestDay = datesRes?.earliest || ''
   const fee = fulfillment === 'delivery' ? deliveryFee : 0
   const total = cart.subtotal + fee
   const visibleSlots = (slots || []).filter((s) => !s.too_soon)
-  // A pick only counts while that slot is still shown and open
   const slotId = visibleSlots.some((s) => s.id === pickedSlotId && s.available) ? pickedSlotId : null
 
   const placeOrder = async (e) => {
@@ -127,7 +121,6 @@ export default function Checkout() {
       setError(err)
       setErrors(err.errors || {})
       if (err.status === 409) {
-        // slot filled up: reload the slots
         api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours } }).then((d) => setSlotsRes({ key: slotsKey, data: d.data }))
       }
       setBusy(false)

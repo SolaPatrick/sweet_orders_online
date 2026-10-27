@@ -4,7 +4,6 @@ import { api } from '../api/client'
 import { peso, timeOnly } from '../lib/format'
 import { ErrorBox, Loader, useApi } from '../components/ui'
 
-// C7 Payment failed. PayMongo sends the customer here when they cancel.
 export default function PaymentFailed() {
   const { id } = useParams()
   const { data, loading, error } = useApi(`/orders/${id}`)

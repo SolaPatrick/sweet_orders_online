@@ -7,10 +7,11 @@ class Home extends MY_Api_Controller
 
     public function index()
     {
-        $this->json([
+        $this->api->require_method('GET');
+        $this->api->respond([
             'app'      => "Sweet Orders Online API for Clayanna's Café",
-            'frontend' => getenv('FRONTEND_URL') ?: 'http://localhost:5173',
-            'health'   => rtrim(getenv('APP_URL') ?: 'http://localhost:3000', '/') . '/api/health',
+            'frontend' => config_item('frontend_url'),
+            'health'   => base_url('api/health'),
             'modules'  => ['auth', 'catalog', 'slots', 'orders', 'payments', 'contact', 'admin'],
         ]);
     }

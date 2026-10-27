@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 
-// C13 About
 export default function About() {
   return (
     <div className="container page">

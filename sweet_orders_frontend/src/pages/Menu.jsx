@@ -2,7 +2,6 @@ import { useSearchParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import { Empty, ErrorBox, Loader, Pagination, useApi } from '../components/ui'
 
-// C2 Menu: search, category and price filters, sorting
 export default function Menu() {
   const [params, setParams] = useSearchParams()
   const filters = {

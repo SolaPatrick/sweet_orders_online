@@ -1,18 +1,17 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** Pickup and delivery scheduling (FR4). Page: C5 Checkout. */
 class Slots extends MY_Api_Controller
 {
-    /**
-     * GET /api/slots?date=YYYY-MM-DD&fulfillment=pickup|delivery&lead_hours=48
-     * Slots for one date. Slots inside the lead time are marked too_soon.
-     */
     public function index()
     {
-        $in = ['date' => $this->query('date'), 'fulfillment' => $this->query('fulfillment')];
-        $this->validate($in, ['date' => 'required|date', 'fulfillment' => 'required|in:pickup,delivery']);
-        $lead = max(0, (int) $this->query('lead_hours', 0));
+        $this->api->require_method('GET');
+        $in = $this->api->get_query_params();
+        $this->validate($in, [
+            'date|Date'               => ['required|pattern[date_ymd]', self::DATE_PATTERN],
+            'fulfillment|Fulfillment' => 'required|in_list["pickup,delivery"]',
+        ]);
+        $lead = max(0, (int) $this->request->query('lead_hours', 0));
 
         $this->call->model('Slot_model');
         $this->Slot_model->release_expired_holds();
@@ -23,25 +22,26 @@ class Slots extends MY_Api_Controller
             return $s;
         }, $this->Slot_model->for_date($in['date'], $in['fulfillment']));
 
-        $this->json(['data' => $slots, 'meta' => ['earliest' => date('Y-m-d H:i:s', $earliest)]]);
+        $this->api->respond(['data' => $slots, 'meta' => ['earliest' => date('Y-m-d H:i:s', $earliest)]]);
     }
 
-    /** GET /api/slots/dates?fulfillment=pickup&days=14  Dates with open places, and blocked dates. */
     public function dates()
     {
-        $fulfillment = $this->query('fulfillment');
-        if ($fulfillment && !in_array($fulfillment, ['pickup', 'delivery'], true)) {
-            $this->error('Please fix the highlighted fields.', 422, ['fulfillment' => 'Fulfillment must be pickup or delivery.']);
-        }
-        $days = min(60, max(1, (int) $this->query('days', 14)));
+        $this->api->require_method('GET');
+        $in = $this->api->get_query_params();
+        $this->validate($in, ['fulfillment|Fulfillment' => 'in_list["pickup,delivery"]'], [
+            'fulfillment' => ['in_list' => 'Fulfillment must be pickup or delivery.'],
+        ]);
+        $fulfillment = $in['fulfillment'] ?? null;
+        $days = min(60, max(1, (int) $this->request->query('days', 14)));
         $this->call->model('Slot_model');
         $this->Slot_model->release_expired_holds();
         $from = date('Y-m-d');
         $to = date('Y-m-d', strtotime("+{$days} days"));
-        $this->json([
+        $this->api->respond([
             'data'          => $this->Slot_model->date_summary($from, $to, $fulfillment ?: null),
             'blocked_dates' => $this->Slot_model->blocked_dates($from),
-            'delivery_fee'  => round((float) (getenv('DELIVERY_FEE') ?: 100), 2),
+            'delivery_fee'  => config_item('delivery_fee'),
         ]);
     }
 }

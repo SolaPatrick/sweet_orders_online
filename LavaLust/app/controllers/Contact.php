@@ -1,27 +1,24 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** Page: C14 Contact. The message is emailed to the café and logged. */
 class Contact extends MY_Api_Controller
 {
-    /** POST /api/contact  {name, email, phone, message} */
     public function send()
     {
-        $this->api()->rate_limit('contact:' . ($_SERVER['REMOTE_ADDR'] ?? ''), 5, 600);
-        $in = $this->input();
+        $this->api->require_method('POST');
+        $this->api->rate_limit('contact:' . $this->request->ip_address(), 5, 600);
+        $in = $this->api->body();
         $this->validate($in, [
-            'name'    => 'required|max:100',
-            'email'   => 'required|email|max:255',
-            'phone'   => 'phone',
-            'message' => 'required|min:5|max:2000',
-        ], ['phone' => 'Mobile number']);
+            'name|Name'           => 'required|max_length[100]',
+            'email|Email'         => 'required|valid_email|max_length[255]',
+            'phone|Mobile number' => ['', self::MOBILE_PATTERN],
+            'message|Message'     => 'required|min_length[5]|max_length[2000]',
+        ]);
 
         $this->call->library('notifier');
-        $to = getenv('CAFE_EMAIL') ?: (getenv('MAIL_FROM') ?: 'cafe@localhost');
         $body = "New message from the Sweet Orders contact form\n\n"
               . "Name: {$in['name']}\nEmail: {$in['email']}\nMobile: " . ($in['phone'] ?? '-') . "\n\n{$in['message']}";
-        $user = $this->current_user();
-        $this->notifier->email($to, 'Contact form: ' . $in['name'], $body, 'contact', null, $user['id'] ?? null);
-        $this->json(['message' => 'Thanks! Your message was sent. We will reply by email.'], 201);
+        $this->notifier->email(config_item('cafe_email'), 'Contact form: ' . $in['name'], $body, 'contact', null, $this->optional_user_id());
+        $this->api->respond(['message' => 'Thanks! Your message was sent. We will reply by email.'], 201);
     }
 }

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { label, STATUS_LABELS } from '../lib/format'
 
-/** Loads an API path and reloads when the path or query changes. */
 export function useApi(path, query) {
   const queryKey = JSON.stringify(query || {})
   const key = `${path}?${queryKey}`
@@ -30,7 +29,6 @@ export function useApi(path, query) {
       .catch((error) => setState({ key, data: null, error, loading: false }))
   }, [path, key, fetchData])
 
-  // Until the current path/query answers, keep the old data and show loading
   const stale = state.key !== key
   return { data: state.data, error: stale ? null : state.error, loading: stale || state.loading, reload }
 }
@@ -120,7 +118,6 @@ export function Pagination({ meta, onPage }) {
   )
 }
 
-/** Confirmation dialog used before deletes and cancellations. */
 export function ConfirmDialog({ open, title, message, confirmText = 'Delete', danger = true, busy, onConfirm, onCancel }) {
   const ref = useRef(null)
   useEffect(() => {

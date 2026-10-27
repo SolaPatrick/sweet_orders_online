@@ -1,41 +1,36 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** delivery_slots table: pickup and delivery time slots with capacity. */
 class Slot_model extends Model
 {
     protected $table = 'delivery_slots';
     protected $fillable = ['slot_date', 'start_time', 'end_time', 'fulfillment', 'capacity', 'booked_count', 'is_blocked'];
 
-    /**
-     * Cancels unpaid orders whose hold ran out and gives their slot back.
-     * Runs before any slot or order list is read.
-     */
     public function release_expired_holds(): int
     {
-        $expired = $this->db->raw(
-            "SELECT id, slot_id FROM orders
-             WHERE status = 'pending_payment' AND payment_status <> 'paid'
-               AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)",
-            [order_hold_minutes()]
-        )->fetchAll();
+        $cutoff = date('Y-m-d H:i:s', time() - order_hold_minutes() * 60);
+        $expired = $this->db->table('orders')
+            ->select('id, slot_id')
+            ->where('status', 'pending_payment')
+            ->where('payment_status', '<>', 'paid')
+            ->where('created_at', '<', $cutoff)
+            ->get_all();
 
         foreach ($expired as $order) {
             $this->db->transaction();
-            $changed = $this->db->raw(
-                "UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'pending_payment'",
-                [$order['id']]
-            )->rowCount();
+            $changed = $this->db->table('orders')
+                ->where('id', $order['id'])
+                ->where('status', 'pending_payment')
+                ->update(['status' => 'cancelled']);
             if ($changed) {
                 $this->release_one((int) $order['slot_id']);
-                $this->db->raw("UPDATE payments SET status = 'expired' WHERE order_id = ? AND status = 'pending'", [$order['id']]);
+                $this->db->table('payments')->where('order_id', $order['id'])->where('status', 'pending')->update(['status' => 'expired']);
             }
             $this->db->commit();
         }
         return count($expired);
     }
 
-    /** Takes one place in a slot. False when the slot is full, blocked or missing. */
     public function book_one(int $slot_id): bool
     {
         return $this->db->raw(
@@ -47,102 +42,113 @@ class Slot_model extends Model
 
     public function release_one(int $slot_id): void
     {
-        $this->db->raw(
-            'UPDATE delivery_slots SET booked_count = GREATEST(booked_count - 1, 0) WHERE id = ?',
-            [$slot_id]
-        );
+        $this->db->table($this->table)->where('id', $slot_id)->where('booked_count', '>', 0)->decrement('booked_count');
     }
 
-    /** Slots for one date and type, with how many places are left. */
     public function for_date(string $date, ?string $fulfillment = null): array
     {
-        $sql = 'SELECT * FROM delivery_slots WHERE slot_date = ?';
-        $args = [$date];
+        $this->db->table($this->table)->where('slot_date', $date);
         if ($fulfillment) {
-            $sql .= ' AND fulfillment = ?';
-            $args[] = $fulfillment;
+            $this->db->where('fulfillment', $fulfillment);
         }
-        $sql .= ' ORDER BY start_time, fulfillment';
-        return array_map([$this, 'cast'], $this->db->raw($sql, $args)->fetchAll());
+        return $this->sorted($this->db->get_all());
     }
 
     public function between(string $from, string $to, ?string $fulfillment = null): array
     {
-        $sql = 'SELECT * FROM delivery_slots WHERE slot_date BETWEEN ? AND ?';
-        $args = [$from, $to];
+        $this->db->table($this->table)->between('slot_date', $from, $to);
         if ($fulfillment) {
-            $sql .= ' AND fulfillment = ?';
-            $args[] = $fulfillment;
+            $this->db->where('fulfillment', $fulfillment);
         }
-        $sql .= ' ORDER BY slot_date, start_time, fulfillment';
-        return array_map([$this, 'cast'], $this->db->raw($sql, $args)->fetchAll());
+        return $this->sorted($this->db->get_all());
     }
 
-    /**
-     * Per-date summary from today on: open places, and whether the whole
-     * date is blocked.
-     */
     public function date_summary(string $from, string $to, ?string $fulfillment = null): array
     {
-        $sql = 'SELECT slot_date,
-                       COUNT(*) AS slots,
-                       SUM(is_blocked = 0 AND booked_count < capacity) AS open_slots,
-                       SUM(CASE WHEN is_blocked = 0 THEN GREATEST(capacity - booked_count, 0) ELSE 0 END) AS places_left,
-                       MIN(is_blocked) AS all_blocked
-                FROM delivery_slots
-                WHERE slot_date BETWEEN ? AND ?';
-        $args = [$from, $to];
+        $this->db->table($this->table)
+            ->select('slot_date, capacity, booked_count, is_blocked')
+            ->between('slot_date', $from, $to);
         if ($fulfillment) {
-            $sql .= ' AND fulfillment = ?';
-            $args[] = $fulfillment;
+            $this->db->where('fulfillment', $fulfillment);
         }
-        $sql .= ' GROUP BY slot_date ORDER BY slot_date';
-        return array_map(function ($r) {
-            return [
-                'date'        => $r['slot_date'],
-                'slots'       => (int) $r['slots'],
-                'open_slots'  => (int) $r['open_slots'],
-                'places_left' => (int) $r['places_left'],
-                'blocked'     => (bool) (int) $r['all_blocked'],
-            ];
-        }, $this->db->raw($sql, $args)->fetchAll());
+        $days = [];
+        foreach ($this->db->get_all() as $s) {
+            $d = &$days[$s['slot_date']];
+            $d = $d ?? ['date' => $s['slot_date'], 'slots' => 0, 'open_slots' => 0, 'places_left' => 0, 'blocked' => true];
+            $open = !(int) $s['is_blocked'];
+            $d['slots']++;
+            $d['open_slots'] += (int) ($open && $s['booked_count'] < $s['capacity']);
+            $d['places_left'] += $open ? max((int) $s['capacity'] - (int) $s['booked_count'], 0) : 0;
+            $d['blocked'] = $d['blocked'] && !$open;
+            unset($d);
+        }
+        ksort($days);
+        return array_values($days);
     }
 
     public function blocked_dates(string $from): array
     {
-        return $this->db->raw(
-            'SELECT slot_date FROM delivery_slots WHERE slot_date >= ?
-             GROUP BY slot_date HAVING MIN(is_blocked) = 1 ORDER BY slot_date',
-            [$from]
-        )->fetchAll(PDO::FETCH_COLUMN);
+        return $this->db->table($this->table)
+            ->select('slot_date')
+            ->where('slot_date', '>=', $from)
+            ->group_by('slot_date')
+            ->having('MIN(is_blocked)', '=', 1)
+            ->order_by('slot_date')
+            ->get_all(PDO::FETCH_COLUMN);
     }
 
     public function set_date_blocked(string $date, int $blocked): int
     {
-        return $this->db->raw('UPDATE delivery_slots SET is_blocked = ? WHERE slot_date = ?', [$blocked, $date])->rowCount();
+        return $this->db->table($this->table)->where('slot_date', $date)->update(['is_blocked' => $blocked]);
     }
 
-    /** Creates slots for every date in range; skips ones that already exist. */
+    public function count_on_date(string $date): int
+    {
+        return (int) $this->db->table($this->table)->where('slot_date', $date)->count();
+    }
+
+    public function day_totals(string $date): array
+    {
+        $booked = $this->db->table($this->table)->select_sum('booked_count', 'n')->where('slot_date', $date)->get();
+        $capacity = $this->db->table($this->table)->select_sum('capacity', 'n')->where('slot_date', $date)->where('is_blocked', 0)->get();
+        return ['booked' => (int) ($booked['n'] ?? 0), 'capacity' => (int) ($capacity['n'] ?? 0)];
+    }
+
     public function generate(string $from, string $to, array $windows, array $types, int $capacity, array $skip_weekdays = []): int
     {
-        $created = 0;
+        $taken = [];
+        foreach ($this->db->table($this->table)->select('slot_date, start_time, fulfillment')->between('slot_date', $from, $to)->get_all() as $s) {
+            $taken[$s['slot_date'] . ' ' . $s['start_time'] . ' ' . $s['fulfillment']] = true;
+        }
+
+        $rows = [];
         $date = new DateTime($from);
         $end = new DateTime($to);
         while ($date <= $end) {
             if (!in_array((int) $date->format('w'), $skip_weekdays, true)) {
                 foreach ($windows as $w) {
                     foreach ($types as $type) {
-                        $created += $this->db->raw(
-                            'INSERT IGNORE INTO delivery_slots (slot_date, start_time, end_time, fulfillment, capacity)
-                             VALUES (?, ?, ?, ?, ?)',
-                            [$date->format('Y-m-d'), $w['start'], $w['end'], $type, $capacity]
-                        )->rowCount();
+                        $key = $date->format('Y-m-d') . ' ' . $w['start'] . ' ' . $type;
+                        if (isset($taken[$key])) {
+                            continue;
+                        }
+                        $taken[$key] = true;
+                        $rows[] = [
+                            'slot_date'   => $date->format('Y-m-d'),
+                            'start_time'  => $w['start'],
+                            'end_time'    => $w['end'],
+                            'fulfillment' => $type,
+                            'capacity'    => $capacity,
+                        ];
                     }
                 }
             }
             $date->modify('+1 day');
         }
-        return $created;
+        if ($rows) {
+            $this->db->table($this->table)->bulk_insert($rows);
+        }
+        return count($rows);
     }
 
     public function cast(array $s): array
@@ -155,5 +161,15 @@ class Slot_model extends Model
         $s['places_left'] = max(0, $s['capacity'] - $s['booked_count']);
         $s['is_full'] = $s['places_left'] === 0;
         return $s;
+    }
+
+    private function sorted(array $rows): array
+    {
+        $type_order = ['pickup' => 1, 'delivery' => 2];
+        usort($rows, function ($a, $b) use ($type_order) {
+            return [$a['slot_date'], $a['start_time'], $type_order[$a['fulfillment']] ?? 3]
+               <=> [$b['slot_date'], $b['start_time'], $type_order[$b['fulfillment']] ?? 3];
+        });
+        return array_map([$this, 'cast'], $rows);
     }
 }

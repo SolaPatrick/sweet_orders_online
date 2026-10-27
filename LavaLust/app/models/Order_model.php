@@ -1,7 +1,6 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** orders, order_items and order_item_options tables. */
 class Order_model extends Model
 {
     protected $table = 'orders';
@@ -10,7 +9,6 @@ class Order_model extends Model
         'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes',
     ];
 
-    /** Status changes staff may make from each status (A3 Order details). */
     public const NEXT_STATUS = [
         'pending_payment'  => ['cancelled'],
         'paid'             => ['preparing', 'cancelled'],
@@ -21,22 +19,19 @@ class Order_model extends Model
         'cancelled'        => [],
     ];
 
-    /** SO-YYYYMMDD-NNNN, numbered per day. */
     public function next_order_number(): string
     {
         $prefix = 'SO-' . date('Ymd') . '-';
-        $last = $this->db->raw(
-            'SELECT order_number FROM orders WHERE order_number LIKE ? ORDER BY order_number DESC LIMIT 1',
-            [$prefix . '%']
-        )->fetchColumn();
-        $n = $last ? (int) substr($last, -4) + 1 : 1;
+        $last = $this->db->table('orders')
+            ->select('order_number')
+            ->like('order_number', $prefix . '%')
+            ->order_by('order_number', 'DESC')
+            ->limit(1)
+            ->get();
+        $n = $last ? (int) substr($last['order_number'], -4) + 1 : 1;
         return $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
     }
 
-    /**
-     * Saves the order and its lines. Call inside a transaction.
-     * $lines: [{product_id, product_name, unit_price, quantity, line_total, cake_message, notes, options: [...]}]
-     */
     public function create_with_items(array $order, array $lines): int
     {
         $order_id = null;
@@ -74,66 +69,98 @@ class Order_model extends Model
         return $order_id;
     }
 
-    private function base_select(): string
+    private function base_query()
     {
-        return 'SELECT o.*, s.slot_date, s.start_time, s.end_time,
-                       u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
-                       (SELECT COALESCE(SUM(quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-                       (SELECT p.method FROM payments p WHERE p.order_id = o.id ORDER BY p.id DESC LIMIT 1) AS payment_method
-                FROM orders o
-                JOIN delivery_slots s ON s.id = o.slot_id
-                JOIN users u ON u.id = o.user_id';
+        return $this->db->table('orders o')
+            ->select('o.id, o.order_number, o.user_id, o.slot_id, o.fulfillment, o.delivery_address, o.contact_phone,
+                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.notes, o.created_at, o.updated_at,
+                      s.slot_date, s.start_time, s.end_time,
+                      u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone')
+            ->inner_join('delivery_slots s', 's.id = o.slot_id')
+            ->inner_join('users u', 'u.id = o.user_id');
+    }
+
+    private function list_rows(?int $limit = null, int $offset = 0): array
+    {
+        $this->db->order_by('CONCAT(o.created_at, 1000000000 + o.id)', 'DESC');
+        if ($limit !== null) {
+            $this->db->limit($limit, $offset);
+        }
+        $rows = $this->db->get_all();
+        if (!$rows) {
+            return [];
+        }
+        $ids = array_column($rows, 'id');
+        $counts = $this->db->table('order_items')
+            ->select('order_id')
+            ->select_sum('quantity', 'n')
+            ->in('order_id', $ids)
+            ->group_by('order_id')
+            ->get_all(PDO::FETCH_KEY_PAIR);
+        $methods = [];
+        foreach ($this->db->table('payments')->select('order_id, method')->in('order_id', $ids)->order_by('id', 'DESC')->get_all() as $p) {
+            if (!array_key_exists($p['order_id'], $methods)) {
+                $methods[$p['order_id']] = $p['method'];
+            }
+        }
+        return array_map(function ($o) use ($counts, $methods) {
+            $o['item_count'] = (int) ($counts[$o['id']] ?? 0);
+            $o['payment_method'] = $methods[$o['id']] ?? null;
+            return $this->cast($o);
+        }, $rows);
     }
 
     public function for_user(int $user_id, string $scope = 'all'): array
     {
-        $sql = $this->base_select() . ' WHERE o.user_id = ?';
+        $this->base_query()->where('o.user_id', $user_id);
         if ($scope === 'active') {
-            $sql .= " AND o.status NOT IN ('completed', 'cancelled')";
+            $this->db->not_in('o.status', ['completed', 'cancelled']);
         } elseif ($scope === 'past') {
-            $sql .= " AND o.status IN ('completed', 'cancelled')";
+            $this->db->in('o.status', ['completed', 'cancelled']);
         }
-        $sql .= ' ORDER BY o.created_at DESC, o.id DESC';
-        return array_map([$this, 'cast'], $this->db->raw($sql, [$user_id])->fetchAll());
+        return $this->list_rows();
     }
 
-    /** A2 Orders: filter by status, slot date, type and search text. Returns [rows, total]. */
+    public function admin_count(array $f): int
+    {
+        $this->db->table('orders o')
+            ->select_count('*', 'n')
+            ->inner_join('delivery_slots s', 's.id = o.slot_id')
+            ->inner_join('users u', 'u.id = o.user_id');
+        $this->admin_filters($f);
+        return (int) $this->db->get()['n'];
+    }
+
     public function admin_search(array $f, int $limit, int $offset): array
     {
-        $where = ['1 = 1'];
-        $args = [];
+        $this->base_query();
+        $this->admin_filters($f);
+        return $this->list_rows($limit, $offset);
+    }
+
+    private function admin_filters(array $f): void
+    {
         if (!empty($f['status'])) {
-            $where[] = 'o.status = ?';
-            $args[] = $f['status'];
+            $this->db->where('o.status', $f['status']);
         }
         if (!empty($f['date'])) {
-            $where[] = 's.slot_date = ?';
-            $args[] = $f['date'];
+            $this->db->where('s.slot_date', $f['date']);
         }
         if (!empty($f['fulfillment'])) {
-            $where[] = 'o.fulfillment = ?';
-            $args[] = $f['fulfillment'];
+            $this->db->where('o.fulfillment', $f['fulfillment']);
         }
         if (!empty($f['q'])) {
-            $where[] = '(o.order_number LIKE ? OR u.name LIKE ? OR u.email LIKE ? OR o.contact_phone LIKE ?)';
             $like = '%' . $f['q'] . '%';
-            array_push($args, $like, $like, $like, $like);
+            $this->db->grouped(function ($db) use ($like) {
+                $db->like('o.order_number', $like)->or_like('u.name', $like)
+                   ->or_like('u.email', $like)->or_like('o.contact_phone', $like);
+            });
         }
-        $w = implode(' AND ', $where);
-        $total = (int) $this->db->raw(
-            "SELECT COUNT(*) FROM orders o JOIN delivery_slots s ON s.id = o.slot_id JOIN users u ON u.id = o.user_id WHERE {$w}",
-            $args
-        )->fetchColumn();
-        $rows = $this->db->raw(
-            $this->base_select() . " WHERE {$w} ORDER BY o.created_at DESC, o.id DESC LIMIT " . (int) $limit . ' OFFSET ' . (int) $offset,
-            $args
-        )->fetchAll();
-        return [array_map([$this, 'cast'], $rows), $total];
     }
 
     public function status_counts(): array
     {
-        $rows = $this->db->raw('SELECT status, COUNT(*) AS n FROM orders GROUP BY status')->fetchAll();
+        $rows = $this->db->table('orders')->select('status')->select_count('*', 'n')->group_by('status')->get_all();
         $out = ['all' => 0];
         foreach ($rows as $r) {
             $out[$r['status']] = (int) $r['n'];
@@ -142,23 +169,37 @@ class Order_model extends Model
         return $out;
     }
 
-    /** Full order with lines, options, payments and (optionally) notifications. */
+    public function count_created_on(string $date): int
+    {
+        return (int) $this->db->table('orders')->where('DATE(created_at)', $date)->count();
+    }
+
+    public function count_with_status(array $statuses): int
+    {
+        return (int) $this->db->table('orders')->in('status', $statuses)->count();
+    }
+
+    public function count_for_slot(int $slot_id): int
+    {
+        return (int) $this->db->table('orders')->where('slot_id', $slot_id)->count();
+    }
+
     public function detail(int $id, bool $with_notifications = false)
     {
-        $order = $this->db->raw($this->base_select() . ' WHERE o.id = ? LIMIT 1', [$id])->fetch();
+        $this->base_query()->where('o.id', $id);
+        $order = $this->list_rows(1)[0] ?? null;
         if (!$order) return null;
-        $order = $this->cast($order);
 
-        $items = $this->db->raw('SELECT * FROM order_items WHERE order_id = ? ORDER BY id', [$id])->fetchAll();
+        $items = $this->db->table('order_items')->where('order_id', $id)->order_by('id')->get_all();
         $item_ids = array_column($items, 'id');
         $options = [];
         if ($item_ids) {
-            $marks = implode(',', array_fill(0, count($item_ids), '?'));
-            foreach ($this->db->raw(
-                "SELECT * FROM order_item_options WHERE order_item_id IN ({$marks})
-                 ORDER BY FIELD(option_group, 'size', 'flavor', 'frosting'), id",
-                $item_ids
-            )->fetchAll() as $o) {
+            $rows = $this->db->table('order_item_options')->in('order_item_id', $item_ids)->get_all();
+            $group_order = ['size' => 1, 'flavor' => 2, 'frosting' => 3];
+            usort($rows, function ($a, $b) use ($group_order) {
+                return [$group_order[$a['option_group']] ?? 0, (int) $a['id']] <=> [$group_order[$b['option_group']] ?? 0, (int) $b['id']];
+            });
+            foreach ($rows as $o) {
                 $options[$o['order_item_id']][] = [
                     'option_group' => $o['option_group'],
                     'option_name'  => $o['option_name'],
@@ -185,14 +226,14 @@ class Order_model extends Model
             $p['order_id'] = (int) $p['order_id'];
             $p['amount'] = (float) $p['amount'];
             return $p;
-        }, $this->db->raw('SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC', [$id])->fetchAll());
+        }, $this->db->table('payments')->where('order_id', $id)->order_by('id', 'DESC')->get_all());
 
         if ($with_notifications) {
-            $order['notifications'] = $this->db->raw(
-                'SELECT id, channel, event, recipient, subject, status, error, created_at
-                 FROM notifications_log WHERE order_id = ? ORDER BY id',
-                [$id]
-            )->fetchAll();
+            $order['notifications'] = $this->db->table('notifications_log')
+                ->select('id, channel, event, recipient, subject, status, error, created_at')
+                ->where('order_id', $id)
+                ->order_by('id')
+                ->get_all();
         }
         $order['next_statuses'] = self::NEXT_STATUS[$order['status']] ?? [];
         $order['hold_expires_at'] = $order['status'] === 'pending_payment'

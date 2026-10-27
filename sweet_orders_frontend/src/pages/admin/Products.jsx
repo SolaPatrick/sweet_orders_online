@@ -4,7 +4,6 @@ import { api } from '../../api/client'
 import { peso } from '../../lib/format'
 import { ConfirmDialog, Empty, ErrorBox, Field, Loader, Notice, Photo, Toggle, useApi } from '../../components/ui'
 
-// A4 Products list
 export default function Products() {
   const [params, setParams] = useSearchParams()
   const q = params.get('q') || ''
@@ -23,7 +22,6 @@ export default function Products() {
     setParams(next, { replace: true })
   }
 
-  // Quick availability switch: saves the product with is_available flipped.
   const toggleAvailable = async (p) => {
     setError(null)
     try {

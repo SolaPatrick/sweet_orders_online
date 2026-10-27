@@ -15,7 +15,6 @@ const EMPTY = {
   options: [],
 }
 
-// A5 Add or edit product (same form)
 export default function ProductForm() {
   const { id } = useParams()
   const editing = Boolean(id)

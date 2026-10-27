@@ -2,7 +2,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { clock, peso, shortDate } from '../lib/format'
 import { Empty, ErrorBox, Loader, Segmented, StatusBadge, useApi } from '../components/ui'
 
-// C10 My orders
 export default function MyOrders() {
   const [params, setParams] = useSearchParams()
   const scope = params.get('scope') || 'all'

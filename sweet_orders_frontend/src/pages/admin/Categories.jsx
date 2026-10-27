@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import { ConfirmDialog, Empty, ErrorBox, Field, Loader, Notice, useApi } from '../../components/ui'
 
-// A6 Categories: add, rename/reorder, delete
 export default function Categories() {
   const { data, loading, error, reload } = useApi('/admin/categories')
   const [form, setForm] = useState({ name: '', sort_order: '' })

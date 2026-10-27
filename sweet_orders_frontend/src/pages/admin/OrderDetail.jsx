@@ -11,7 +11,6 @@ const ACTION_TEXT = {
   completed: 'Mark as Completed',
 }
 
-// A3 Order details: change status (sends email + SMS)
 export default function OrderDetail() {
   const { id } = useParams()
   const { data, loading, error, reload } = useApi(`/admin/orders/${id}`)

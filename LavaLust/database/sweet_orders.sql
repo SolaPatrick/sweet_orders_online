@@ -1,18 +1,3 @@
--- =====================================================================
--- Sweet Orders Online: full database script (schema + starter data)
--- Clayanna's Café · LavaLust API · MySQL 8 / MariaDB 10.4+
---
--- HOW TO RUN IN NAVICAT
---   1. Connect to your MySQL server (XAMPP or Aiven).
---   2. Open the database you will use (XAMPP: create `sweet_orders` first;
---      Aiven: the built-in `defaultdb`), then New Query.
---   3. Paste this whole file and click Run.
---   4. Put the same database name in the backend .env as DB_NAME.
---
--- WARNING: the DROP TABLE lines below remove these 11 tables and their
--- data so the script can be run again from a clean state.
--- =====================================================================
-
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -30,9 +15,6 @@ DROP TABLE IF EXISTS users;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
--- ---------------------------------------------------------------------
--- 1. users: customers and café staff (admin)
--- ---------------------------------------------------------------------
 CREATE TABLE users (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     name        VARCHAR(100) NOT NULL,
@@ -48,9 +30,6 @@ CREATE TABLE users (
     KEY idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 2. refresh_tokens: used by the LavaLust Api library (JWT refresh)
--- ---------------------------------------------------------------------
 CREATE TABLE refresh_tokens (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id     INT UNSIGNED NOT NULL,
@@ -63,9 +42,6 @@ CREATE TABLE refresh_tokens (
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 3. categories
--- ---------------------------------------------------------------------
 CREATE TABLE categories (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     name        VARCHAR(100) NOT NULL,
@@ -76,9 +52,6 @@ CREATE TABLE categories (
     UNIQUE KEY uq_categories_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 4. products
--- ---------------------------------------------------------------------
 CREATE TABLE products (
     id               INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     category_id      INT UNSIGNED  NOT NULL,
@@ -100,9 +73,6 @@ CREATE TABLE products (
         REFERENCES categories (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 5. product_options: size, flavor and frosting choices
--- ---------------------------------------------------------------------
 CREATE TABLE product_options (
     id            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     product_id    INT UNSIGNED  NOT NULL,
@@ -116,9 +86,6 @@ CREATE TABLE product_options (
         REFERENCES products (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 6. delivery_slots: pickup / delivery time slots with capacity
--- ---------------------------------------------------------------------
 CREATE TABLE delivery_slots (
     id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
     slot_date     DATE         NOT NULL,
@@ -134,9 +101,6 @@ CREATE TABLE delivery_slots (
     KEY idx_delivery_slots_date (slot_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 7. orders
--- ---------------------------------------------------------------------
 CREATE TABLE orders (
     id                INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_number      VARCHAR(20)   NOT NULL,
@@ -166,9 +130,6 @@ CREATE TABLE orders (
         REFERENCES delivery_slots (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 8. order_items: snapshot of each cart line
--- ---------------------------------------------------------------------
 CREATE TABLE order_items (
     id            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_id      INT UNSIGNED  NOT NULL,
@@ -188,9 +149,6 @@ CREATE TABLE order_items (
         REFERENCES products (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 9. order_item_options: chosen size / flavor / frosting per line
--- ---------------------------------------------------------------------
 CREATE TABLE order_item_options (
     id                 INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_item_id      INT UNSIGNED  NOT NULL,
@@ -207,9 +165,6 @@ CREATE TABLE order_item_options (
         REFERENCES product_options (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 10. payments: one row per PayMongo checkout attempt
--- ---------------------------------------------------------------------
 CREATE TABLE payments (
     id                   INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_id             INT UNSIGNED  NOT NULL,
@@ -229,9 +184,6 @@ CREATE TABLE payments (
         REFERENCES orders (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 11. notifications_log: every email and SMS
--- ---------------------------------------------------------------------
 CREATE TABLE notifications_log (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     order_id    INT UNSIGNED NULL,
@@ -253,10 +205,6 @@ CREATE TABLE notifications_log (
         REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- =====================================================================
--- STARTER DATA (so the site shows real database records right away)
--- =====================================================================
-
 INSERT INTO categories (id, name, slug, sort_order) VALUES
 (1, 'Custom cakes', 'custom-cakes', 1),
 (2, 'Cupcakes',     'cupcakes',     2),
@@ -275,7 +223,6 @@ INSERT INTO products (id, category_id, name, slug, description, base_price, lead
 (8, 4, 'Pandesal (20)',        'pandesal-20',          'Twenty classic pandesal, best eaten warm.',                           120.00,  2, 0, 0, 0),
 (9, 5, 'Choco Chip Cookies (12)', 'choco-chip-cookies-12', 'A dozen chewy chocolate chip cookies.',                           300.00,  4, 0, 1, 0);
 
--- Size, flavor and frosting choices for the customizable cakes (products 1 to 4)
 INSERT INTO product_options (product_id, option_group, name, price_add, sort_order)
 SELECT p.id, o.option_group, o.name, o.price_add, o.sort_order
 FROM products p
@@ -292,8 +239,6 @@ JOIN (
 ) o
 WHERE p.is_customizable = 1;
 
--- Time slots for the next 21 days. The café is closed on Mondays.
--- Pickup: 7 one-hour slots, 5 orders each. Delivery: 4 two-hour slots, 3 orders each.
 INSERT INTO delivery_slots (slot_date, start_time, end_time, fulfillment, capacity)
 SELECT d.slot_date, t.start_time, t.end_time, t.fulfillment, t.capacity
 FROM (
@@ -320,11 +265,3 @@ CROSS JOIN (
     UNION ALL SELECT '17:00:00', '19:00:00', 'delivery', 3
 ) t
 WHERE DAYOFWEEK(d.slot_date) <> 2;
-
--- =====================================================================
--- ADMIN ACCOUNT
--- No password is stored in this script. Register an account on the site
--- (C9 Register), then run this line with your email to make it an admin:
---
--- UPDATE users SET role = 'admin' WHERE email = 'your-email@example.com';
--- =====================================================================

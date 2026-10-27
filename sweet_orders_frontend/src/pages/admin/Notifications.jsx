@@ -6,7 +6,6 @@ import { Empty, ErrorBox, Loader, Notice, Pagination, Segmented, StatusBadge, us
 
 const STATUS = { sent: 'Sent', failed: 'Failed', logged: 'Logged' }
 
-// A9 Notification log
 export default function Notifications() {
   const [params, setParams] = useSearchParams()
   const filters = { channel: params.get('channel') || '', status: params.get('status') || '', page: params.get('page') || 1 }

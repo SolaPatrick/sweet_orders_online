@@ -1,25 +1,14 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/**
- * Product photo storage on Cloudinary (free plan).
- *
- * Render's free plan deletes uploaded files whenever the service restarts,
- * so photos are sent to Cloudinary and the products table keeps the photo's
- * https URL. Set CLOUDINARY_URL (cloudinary://API_KEY:API_SECRET@CLOUD_NAME,
- * copied from the Cloudinary dashboard). Without it, photos are saved in
- * public/uploads/products like before.
- */
 class Cloudinary
 {
     private const API = 'https://api.cloudinary.com/v1_1/';
     private const FOLDER = 'sweet-orders/products';
 
-    /** [cloud_name, api_key, api_secret], or null when CLOUDINARY_URL is not set. */
     private function config(): ?array
     {
-        // Render keeps quotes typed around a value; .env files do not
-        $url = trim((string) getenv('CLOUDINARY_URL'), " \"'");
+        $url = (string) config_item('cloudinary_url');
         if (!preg_match('#^cloudinary://([^:]+):([^@]+)@([^/?\s]+)#', $url, $m)) {
             return null;
         }
@@ -31,7 +20,6 @@ class Cloudinary
         return $this->config() !== null;
     }
 
-    /** Uploads an image file and returns its https URL. */
     public function upload(string $path): string
     {
         [$cloud, $key, $secret] = $this->config();
@@ -47,7 +35,6 @@ class Cloudinary
         return $result['secure_url'];
     }
 
-    /** Deletes a photo by the URL upload() returned. Failures are ignored. */
     public function delete(string $url): void
     {
         $public_id = self::public_id($url);
@@ -62,11 +49,9 @@ class Cloudinary
                 'signature' => $this->sign($params, $secret),
             ]);
         } catch (RuntimeException $e) {
-            // An old photo left on Cloudinary is harmless
         }
     }
 
-    /** "https://res.cloudinary.com/x/image/upload/v1/sweet-orders/products/abc.jpg" => "sweet-orders/products/abc" */
     public static function public_id(string $url): ?string
     {
         if (!preg_match('#^https://res\.cloudinary\.com/[^/]+/image/upload/(?:v\d+/)?(.+)\.[a-z0-9]+$#i', $url, $m)) {
@@ -75,7 +60,6 @@ class Cloudinary
         return rawurldecode($m[1]);
     }
 
-    /** Signed-request signature: sorted params joined with &, then the secret, SHA-1. */
     private function sign(array $params, string $secret): string
     {
         ksort($params);

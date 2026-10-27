@@ -1,217 +1,145 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
-/**
- * Base controller for every /api route.
- *
- * Sends the API security and CORS headers so the React app (Vite on
- * http://localhost:5173) can call the API, connects to MySQL, and gives
- * every controller the same JSON, auth and validation helpers.
- */
 class MY_Api_Controller extends Controller
 {
-    /** Set to false in a controller that must answer without MySQL. */
     protected $uses_database = true;
 
-    /** Logged-in user row, filled by require_user() / current_user(). */
-    protected $auth_user = null;
+    private $validation_data = [];
+
+    const MOBILE_PATTERN = '(\+639|09)\d{9}';
+
+    const TIME_PATTERN = '([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?';
+
+    const DATE_PATTERN = '\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])';
+
+    private const PATTERN_MESSAGES = [
+        self::MOBILE_PATTERN => '%s must be a mobile number like 0917 123 4567.',
+        self::TIME_PATTERN   => '%s must be a time (HH:MM).',
+        self::DATE_PATTERN   => '%s must be a date (YYYY-MM-DD).',
+    ];
 
     public function before_action()
     {
         $this->security_headers->apply_api();
+        $this->call->library('api');
         if ($this->uses_database) {
             $this->call->database();
-            // Keep MySQL NOW() on Philippine time, same as PHP (Aiven runs on UTC).
             $this->db->raw("SET time_zone = '+08:00'");
         }
     }
 
-    protected function json($data, int $code = 200)
+    protected function user(): array
     {
-        http_response_code($code);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
+        return load_class('AuthMiddleware', 'middlewares')->user;
     }
 
-    protected function error(string $message, int $code = 400, array $errors = [])
+    protected function optional_user_id()
     {
-        $body = ['error' => $message, 'status' => $code];
-        if ($errors) {
-            $body['errors'] = $errors;
-        }
-        $this->json($body, $code);
-    }
-
-    /** The LavaLust Api library (JWT, tokens, rate limit). Loaded only when needed. */
-    protected function api()
-    {
-        return $this->call->library('api');
-    }
-
-    /** Request body as an array: JSON, form or multipart. */
-    protected function input(): array
-    {
-        static $body = null;
-        if ($body === null) {
-            $body = $this->api()->body();
-        }
-        return is_array($body) ? $body : [];
-    }
-
-    protected function query(string $key, $default = null)
-    {
-        $value = $_GET[$key] ?? $default;
-        return is_string($value) ? trim($value) : $value;
-    }
-
-    // --------------------------------------------------------------
-    // Auth
-    // --------------------------------------------------------------
-
-    /** Returns the logged-in user or null, without failing. */
-    protected function current_user()
-    {
-        if ($this->auth_user !== null) {
-            return $this->auth_user;
-        }
-        $token = $this->api()->get_bearer_token();
-        if (!$token) {
-            return null;
-        }
-        $payload = $this->api()->validate_jwt($token);
+        $token = $this->api->get_bearer_token();
+        $payload = $token ? $this->api->validate_jwt($token) : null;
         if (!$payload) {
             return null;
         }
         $this->call->model('User_model');
         $user = $this->User_model->find((int) $payload['sub']);
-        if (!$user || !(int) $user['is_active']) {
-            return null;
-        }
-        return $this->auth_user = $user;
+        return $user && (int) $user['is_active'] ? (int) $user['id'] : null;
     }
 
-    protected function require_user()
+    protected function validate(array $data, array $rules, array $messages = []): void
     {
-        $user = $this->current_user();
-        if (!$user) {
-            $this->error('Please log in to continue.', 401);
-        }
-        return $user;
-    }
-
-    protected function require_admin()
-    {
-        $user = $this->require_user();
-        if ($user['role'] !== 'admin') {
-            $this->error('This page is for café staff only.', 403);
-        }
-        return $user;
-    }
-
-    // --------------------------------------------------------------
-    // Validation
-    // --------------------------------------------------------------
-
-    /**
-     * Server-side validation. Rules per field, separated by "|":
-     * required, email, phone, min:n, max:n, numeric, integer, gte:n,
-     * in:a,b,c, date, time, bool, array.
-     * Answers 422 with a message for each invalid field.
-     */
-    protected function validate(array $data, array $rules, array $labels = [])
-    {
+        $fv = $this->form_validation($data, $rules);
         $errors = [];
-        foreach ($rules as $field => $rule_string) {
-            $label = $labels[$field] ?? ucfirst(str_replace('_', ' ', $field));
-            $value = $data[$field] ?? null;
-            $is_empty = $value === null || $value === '' || (is_array($value) && !$value);
+        foreach ($rules as $key => $spec) {
+            [$field, $label] = array_pad(explode('|', $key, 2), 2, null);
+            $label = $label ?? ucfirst(str_replace('_', ' ', $field));
+            [$rule_string, $pattern] = array_pad((array) $spec, 2, null);
 
-            foreach (explode('|', $rule_string) as $rule) {
-                [$name, $arg] = array_pad(explode(':', $rule, 2), 2, null);
-
-                if ($name === 'required') {
-                    if ($is_empty) { $errors[$field] = "{$label} is required."; break; }
+            $value = $this->validation_data[$field] ?? null;
+            if ($value === null || $value === '' || $value === []) {
+                if (!in_array('required', explode('|', $rule_string), true)) {
                     continue;
                 }
-                if ($is_empty) {
-                    break;
-                }
-                $message = null;
-                switch ($name) {
-                    case 'email':
-                        if (!filter_var($value, FILTER_VALIDATE_EMAIL)) $message = "{$label} must be a valid email address.";
-                        break;
-                    case 'phone':
-                        if (!preg_match('/^(\+639|09)\d{9}$/', preg_replace('/[\s-]/', '', (string) $value))) {
-                            $message = "{$label} must be a mobile number like 0917 123 4567.";
-                        }
-                        break;
-                    case 'min':
-                        if (mb_strlen((string) $value) < (int) $arg) $message = "{$label} must be at least {$arg} characters.";
-                        break;
-                    case 'max':
-                        if (mb_strlen((string) $value) > (int) $arg) $message = "{$label} must be {$arg} characters or fewer.";
-                        break;
-                    case 'numeric':
-                        if (!is_numeric($value)) $message = "{$label} must be a number.";
-                        break;
-                    case 'integer':
-                        if (filter_var($value, FILTER_VALIDATE_INT) === false) $message = "{$label} must be a whole number.";
-                        break;
-                    case 'gte':
-                        if (!is_numeric($value) || $value < (float) $arg) $message = "{$label} must be {$arg} or more.";
-                        break;
-                    case 'in':
-                        if (!in_array((string) $value, explode(',', $arg), true)) $message = "{$label} must be one of: " . str_replace(',', ', ', $arg) . '.';
-                        break;
-                    case 'date':
-                        $d = DateTime::createFromFormat('Y-m-d', (string) $value);
-                        if (!$d || $d->format('Y-m-d') !== $value) $message = "{$label} must be a date (YYYY-MM-DD).";
-                        break;
-                    case 'time':
-                        if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', (string) $value)) $message = "{$label} must be a time (HH:MM).";
-                        break;
-                    case 'bool':
-                        if (!in_array($value, [true, false, 0, 1, '0', '1', 'true', 'false'], true)) $message = "{$label} must be true or false.";
-                        break;
-                    case 'array':
-                        if (!is_array($value)) $message = "{$label} must be a list.";
-                        break;
-                }
-                if ($message) {
-                    $errors[$field] = $message;
-                    break;
-                }
+                $rule_string = 'required';
+                $pattern = null;
+            }
+
+            $custom = array_merge($this->rule_messages($rule_string, $label), $messages[$field] ?? []);
+            $fv->validate([$field . '|' . $label => $rule_string], [$field => $custom]);
+            if ($pattern !== null && $fv->run()) {
+                $fv->name($field)->custom_pattern($pattern, sprintf(self::PATTERN_MESSAGES[$pattern], $label));
+            }
+            if (!$fv->run()) {
+                $errors[$field] = $fv->get_errors()[0];
             }
         }
         if ($errors) {
-            $this->error('Please fix the highlighted fields.', 422, $errors);
+            $this->fail_validation($errors);
         }
     }
 
-    protected function to_bool($value): int
+    protected function fail_validation(array $errors, string $message = 'Please fix the highlighted fields.'): void
     {
-        return in_array($value, [true, 1, '1', 'true', 'on'], true) ? 1 : 0;
+        $this->response->send_json_validation($errors, $message);
+        exit;
     }
 
-    protected function normalize_phone($phone)
+    private function form_validation(array $data, array $rules)
     {
-        $phone = preg_replace('/[\s-]/', '', (string) $phone);
-        if ($phone === '') return null;
-        return strpos($phone, '+63') === 0 ? '0' . substr($phone, 3) : $phone;
+        if (!isset($this->properties['form_validation'])) {
+            $mobile_fields = [];
+            foreach ($rules as $key => $spec) {
+                if ((((array) $spec)[1] ?? null) === self::MOBILE_PATTERN) {
+                    $mobile_fields[] = explode('|', $key)[0];
+                }
+            }
+            foreach ($data as $field => $value) {
+                if (is_bool($value)) {
+                    $value = $value ? '1' : '0';
+                } elseif (is_int($value) || is_float($value)) {
+                    $value = (string) $value;
+                }
+                if (in_array($field, $mobile_fields, true) && is_string($value)) {
+                    $value = preg_replace('/[\s-]/', '', $value);
+                }
+                $data[$field] = $value;
+            }
+            $this->validation_data = $data;
+            $_POST = $data;
+        }
+        return $this->call->library('form_validation');
     }
 
-    protected function slugify(string $text): string
+    private function rule_messages(string $rule_string, string $label): array
     {
-        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9]+/', '-', $text), '-'));
-        return $slug !== '' ? $slug : 'item-' . time();
+        $out = [];
+        foreach (explode('|', $rule_string) as $rule) {
+            preg_match('/^(\w+)(?:\[(.*)\])?$/s', $rule, $m);
+            $param = trim($m[2] ?? '', '"');
+            switch ($m[1] ?? '') {
+                case 'required':              $out['required'] = "{$label} is required."; break;
+                case 'valid_email':           $out['valid_email'] = "{$label} must be a valid email address."; break;
+                case 'min_length':            $out['min_length'] = "{$label} must be at least {$param} characters."; break;
+                case 'max_length':            $out['max_length'] = "{$label} must be {$param} characters or fewer."; break;
+                case 'numeric':               $out['numeric'] = "{$label} must be a number."; break;
+                case 'greater_than_equal_to': $out['greater_than_equal_to'] = "{$label} must be {$param} or more."; break;
+                case 'matches':               $out['matches'] = 'Passwords do not match.'; break;
+                case 'in_list':
+                    $out['in_list'] = $param === '0,1,true,false'
+                        ? "{$label} must be true or false."
+                        : "{$label} must be one of: " . str_replace(',', ', ', $param) . '.';
+                    break;
+                case 'pattern':
+                    $out['pattern'] = [
+                        'int'      => "{$label} must be a whole number.",
+                        'date_ymd' => "{$label} must be a date (YYYY-MM-DD).",
+                        'array'    => "{$label} must be a list.",
+                    ][$param] ?? "{$label} does not match the required format.";
+                    break;
+            }
+        }
+        return $out;
     }
 
-    // --------------------------------------------------------------
-    // Order helpers shared by Orders, Payments and Admin
-    // --------------------------------------------------------------
-
-    /** Sends the email + SMS for an order event (FR6). Never breaks the request. */
     protected function notify_order(int $order_id, string $event): void
     {
         try {
@@ -222,17 +150,13 @@ class MY_Api_Controller extends Controller
                 $this->notifier->order_event($order, $event);
             }
         } catch (Throwable $e) {
-            error_log('Notification failed: ' . $e->getMessage());
+            $this->logger->log('error', 'Notification', 'Notification failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
         }
     }
 
-    /**
-     * Marks a payment and its order as paid (webhook, return check or
-     * simulate mode). Safe to call twice.
-     */
     protected function mark_order_paid(int $payment_id, array $info = []): bool
     {
-        $payment = $this->db->raw('SELECT * FROM payments WHERE id = ? LIMIT 1', [$payment_id])->fetch();
+        $payment = $this->db->table('payments')->where('id', $payment_id)->get();
         if (!$payment || $payment['status'] === 'paid') {
             return false;
         }
@@ -245,15 +169,14 @@ class MY_Api_Controller extends Controller
         ]);
         $order = $this->db->raw('SELECT id, status, slot_id FROM orders WHERE id = ? FOR UPDATE', [$payment['order_id']])->fetch();
         if ($order['status'] === 'cancelled') {
-            // Paid after the hold ran out: take the slot back if it still has room.
             $this->call->model('Slot_model');
             $this->Slot_model->book_one((int) $order['slot_id']);
         }
-        if (in_array($order['status'], ['pending_payment', 'cancelled'], true)) {
-            $this->db->raw("UPDATE orders SET status = 'paid', payment_status = 'paid' WHERE id = ?", [$order['id']]);
-        } else {
-            $this->db->raw("UPDATE orders SET payment_status = 'paid' WHERE id = ?", [$order['id']]);
-        }
+        $this->db->table('orders')->where('id', $order['id'])->update(
+            in_array($order['status'], ['pending_payment', 'cancelled'], true)
+                ? ['status' => 'paid', 'payment_status' => 'paid']
+                : ['payment_status' => 'paid']
+        );
         $this->db->commit();
         $this->notify_order((int) $order['id'], 'payment_confirmed');
         return true;
@@ -261,13 +184,20 @@ class MY_Api_Controller extends Controller
 
     protected function frontend_url(string $path = ''): string
     {
-        return rtrim(getenv('FRONTEND_URL') ?: 'http://localhost:5173', '/') . $path;
+        return config_item('frontend_url') . $path;
     }
 
-    protected function pagination_params(int $default_per_page = 20): array
+    protected function paginate(int $total, int $default_per_page): array
     {
-        $page = max(1, (int) ($this->query('page') ?: 1));
-        $per_page = min(100, max(1, (int) ($this->query('per_page') ?: $default_per_page)));
-        return [$page, $per_page, ($page - 1) * $per_page];
+        $per_page = min(100, max(1, (int) ($this->request->query('per_page') ?: $default_per_page)));
+        $this->call->library('pagination');
+        $page = $this->pagination->initialize($total, $per_page, (int) $this->request->query('page', 1), $this->request->path());
+        $page['per_page'] = $per_page;
+        return $page;
+    }
+
+    protected function page_meta(array $page): array
+    {
+        return ['page' => $page['current'], 'per_page' => $page['per_page'], 'total' => $page['total_rows']];
     }
 }

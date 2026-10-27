@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 
-// C15 Not found
 export default function NotFound() {
   return (
     <div className="container page error-page">

@@ -18,7 +18,6 @@ export function CartProvider({ children }) {
     localStorage.setItem(CART_KEY, JSON.stringify(items))
   }, [items])
 
-  // Same product with the same choices and message is merged into one line.
   const add = useCallback((item) => {
     const key = [item.product_id, [...item.option_ids].sort().join('-'), item.cake_message || '', item.notes || ''].join('|')
     setItems((list) => {

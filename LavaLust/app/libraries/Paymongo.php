@@ -1,37 +1,23 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/**
- * PayMongo payment gateway (FR5): hosted checkout sessions and webhooks.
- *
- * With PAYMONGO_SECRET_KEY set (a sk_test_ key for sandbox), customers are
- * sent to PayMongo to pay with GCash or card. Without a key the API runs
- * in "simulate" mode: the order is marked paid right away so the whole
- * ordering flow can still be demonstrated.
- */
 class Paymongo
 {
     private const API = 'https://api.paymongo.com/v1';
 
     public function mode(): string
     {
-        return getenv('PAYMONGO_SECRET_KEY') ? 'paymongo' : 'simulate';
+        return config_item('paymongo_secret_key') ? 'paymongo' : 'simulate';
     }
 
-    /** Payment method types offered on the PayMongo page, e.g. "gcash,card". */
     public function methods(): array
     {
-        $list = array_filter(array_map('trim', explode(',', getenv('PAYMONGO_METHODS') ?: 'gcash,card')));
+        $list = array_filter(array_map('trim', explode(',', config_item('paymongo_methods'))));
         return array_values($list);
     }
 
-    /**
-     * Creates a checkout session for an order (amounts in centavos).
-     * Returns ['id' => cs_..., 'checkout_url' => ...].
-     */
     public function create_checkout(array $order, string $success_url, string $cancel_url, ?string $method = null): array
     {
-        // The customer picked GCash or Card at checkout: offer only that one.
         $methods = $method && in_array($method, $this->methods(), true) ? [$method] : $this->methods();
         $line_items = [];
         foreach ($order['items'] as $item) {
@@ -80,14 +66,12 @@ class Paymongo
         ];
     }
 
-    /** Reads a checkout session back. Returns the paid payment or null. */
     public function paid_payment(string $session_id)
     {
         $res = $this->request('GET', '/checkout_sessions/' . rawurlencode($session_id));
         return $this->find_paid_payment($res['data'] ?? []);
     }
 
-    /** From a checkout_session object, the first payment with status "paid". */
     public function find_paid_payment(array $session)
     {
         foreach ($session['attributes']['payments'] ?? [] as $payment) {
@@ -103,13 +87,9 @@ class Paymongo
         return null;
     }
 
-    /**
-     * Checks the Paymongo-Signature header: "t=<time>,te=<test sig>,li=<live sig>".
-     * The signature is HMAC-SHA256 of "<t>.<raw body>" with the webhook secret.
-     */
     public function verify_signature(string $raw_body, string $header, bool $livemode): bool
     {
-        $secret = getenv('PAYMONGO_WEBHOOK_SECRET');
+        $secret = config_item('paymongo_webhook_secret');
         if (!$secret || $header === '') {
             return false;
         }
@@ -133,7 +113,7 @@ class Paymongo
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 20,
-            CURLOPT_USERPWD        => getenv('PAYMONGO_SECRET_KEY') . ':',
+            CURLOPT_USERPWD        => config_item('paymongo_secret_key') . ':',
             CURLOPT_HTTPHEADER     => ['Accept: application/json', 'Content-Type: application/json'],
         ];
         if ($body !== null) {

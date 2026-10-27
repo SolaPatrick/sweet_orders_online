@@ -12,7 +12,7 @@ It covers the five integrations in the project plan:
 | Payment gateway: PayMongo GCash/card (FR5) | `app/libraries/Paymongo.php`, `Payments` webhook |
 | Product catalog (FR2) | `Catalog` controller, `Product_model`, `Category_model` |
 | Delivery/pickup scheduling (FR4) | `Slots` controller, `Slot_model` |
-| Email/SMS notifications (FR6) | `app/libraries/Notifier.php` (SMTP + textbee, Vonage, Semaphore or Twilio) |
+| Email/SMS notifications (FR6) | `app/libraries/Notifier.php` (SMTP + textbee or Vonage) |
 | Product photo storage | `app/libraries/Cloudinary.php` (Cloudinary free plan; local `public/uploads` without a key) |
 
 ## Requirements
@@ -46,7 +46,7 @@ Optional. Each one falls back to a safe test mode when empty:
 |---|---|
 | `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | Payments run in **simulate mode**: orders are marked paid at once (method "Test payment") |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `CAFE_EMAIL` | Emails are only written to the notification log |
-| `TEXTBEE_API_KEY`, `TEXTBEE_DEVICE_ID` (or the Vonage, Semaphore or Twilio keys) | SMS are only written to the notification log |
+| `TEXTBEE_API_KEY`, `TEXTBEE_DEVICE_ID` (or the Vonage keys) | SMS are only written to the notification log |
 
 Never commit `.env`; it is already in `.gitignore`.
 

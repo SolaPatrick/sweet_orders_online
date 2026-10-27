@@ -1,34 +1,41 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** categories table, with how many products each one holds. */
 class Category_model extends Model
 {
     protected $table = 'categories';
     protected $fillable = ['name', 'slug', 'sort_order'];
 
-    public function all_with_counts()
+    public function all_with_counts(): array
     {
-        return $this->db->raw(
-            'SELECT c.*, COUNT(p.id) AS product_count
-             FROM categories c
-             LEFT JOIN products p ON p.category_id = c.id
-             GROUP BY c.id
-             ORDER BY c.sort_order, c.name'
-        )->fetchAll();
+        $rows = $this->db->table('categories c')
+            ->select('c.id, c.name, c.slug, c.sort_order')
+            ->select_count('p.id', 'product_count')
+            ->left_join('products p', 'p.category_id = c.id')
+            ->group_by(['c.id', 'c.name', 'c.slug', 'c.sort_order'])
+            ->get_all();
+        $rows = array_map(function ($c) {
+            return [
+                'id'            => (int) $c['id'],
+                'name'          => $c['name'],
+                'slug'          => $c['slug'],
+                'sort_order'    => (int) $c['sort_order'],
+                'product_count' => (int) $c['product_count'],
+            ];
+        }, $rows);
+        usort($rows, function ($a, $b) {
+            return [$a['sort_order'], $a['name']] <=> [$b['sort_order'], $b['name']];
+        });
+        return $rows;
     }
 
     public function slug_taken(string $slug, $except_id = null): bool
     {
-        $row = $this->db->raw(
-            'SELECT id FROM categories WHERE slug = ? AND id <> ? LIMIT 1',
-            [$slug, (int) $except_id]
-        )->fetch();
-        return (bool) $row;
-    }
-
-    public function product_count(int $id): int
-    {
-        return (int) $this->db->raw('SELECT COUNT(*) FROM products WHERE category_id = ?', [$id])->fetchColumn();
+        return (bool) $this->db->table($this->table)
+            ->select('id')
+            ->where('slug', $slug)
+            ->where('id', '<>', (int) $except_id)
+            ->limit(1)
+            ->get();
     }
 }

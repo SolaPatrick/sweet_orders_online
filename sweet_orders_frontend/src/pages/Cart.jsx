@@ -3,7 +3,6 @@ import { useCart } from '../context/CartContext'
 import { peso } from '../lib/format'
 import { Empty, Photo, QuantityStepper } from '../components/ui'
 
-// C4 Cart
 export default function Cart() {
   const { items, subtotal, leadHours, setQuantity, remove } = useCart()
   const navigate = useNavigate()

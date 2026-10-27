@@ -16,7 +16,6 @@ function steps(order) {
   ]
 }
 
-// C11 Order details with status timeline
 export default function OrderDetails() {
   const { id } = useParams()
   const { data, loading, error, reload } = useApi(`/orders/${id}`)

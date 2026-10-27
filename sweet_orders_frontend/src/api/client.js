@@ -1,6 +1,3 @@
-// Small fetch wrapper for the LavaLust API.
-// Adds the JWT access token, refreshes it once when it expires, and turns
-// error answers into ApiError so pages can show field messages.
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '')
 
@@ -99,7 +96,8 @@ export async function api(path, { method = 'GET', body, query, retry = true } = 
   }
 
   if (!res.ok) {
-    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.errors || {})
+    const message = data?.error === 'Unauthorized' ? 'Please log in to continue.' : data?.error
+    throw new ApiError(message || `Request failed (${res.status})`, res.status, data?.errors || {})
   }
   return data
 }

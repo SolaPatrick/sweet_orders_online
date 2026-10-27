@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 
-// C15 Access denied (non-admins who open /admin)
 export default function AccessDenied() {
   return (
     <div className="container page error-page">

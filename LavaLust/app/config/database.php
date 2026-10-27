@@ -66,7 +66,6 @@ $database['main'] = array(
     'database'	=> getenv('DB_NAME') ?: '',
     'charset'	=> getenv('DB_CHARSET') ?: '',
     'dbprefix'	=> getenv('DB_PREFIX') ?: '',
-    // Aiven and other cloud MySQL need SSL: path to the CA certificate (ca.pem)
     'ssl_ca'    => getenv('DB_SSL_CA') ?: '',
     // Optional for SQLite
     'path'      => ''

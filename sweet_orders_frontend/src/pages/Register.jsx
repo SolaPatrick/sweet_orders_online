@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field } from '../components/ui'
 
-// C9 Register
 export default function Register() {
   const { register } = useAuth()
   const navigate = useNavigate()

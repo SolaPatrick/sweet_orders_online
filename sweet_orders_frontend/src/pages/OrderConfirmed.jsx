@@ -4,7 +4,6 @@ import { api } from '../api/client'
 import { peso, slotLabel, methodLabel } from '../lib/format'
 import { ErrorBox, Loader } from '../components/ui'
 
-// C6 Order confirmed. PayMongo sends the customer here after paying.
 export default function OrderConfirmed() {
   const { id } = useParams()
   const [order, setOrder] = useState(null)
@@ -16,7 +15,6 @@ export default function OrderConfirmed() {
     api(`/orders/${id}`)
       .then((d) => {
         setOrder(d.data)
-        // The webhook can take a few seconds: check again while unpaid.
         if (d.data.payment_status !== 'paid' && d.data.status === 'pending_payment' && tries < 6) {
           timer = setTimeout(() => setTries((t) => t + 1), 3000)
         }

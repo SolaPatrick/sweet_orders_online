@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { clock, peso, timeOnly, methodLabel } from '../../lib/format'
 import { Empty, ErrorBox, Loader, StatusBadge, useApi } from '../../components/ui'
 
-// A1 Dashboard
 export default function Dashboard() {
   const { data, loading, error, reload } = useApi('/admin/dashboard')
   if (loading) return <Loader />

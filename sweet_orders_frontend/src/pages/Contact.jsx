@@ -3,7 +3,6 @@ import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field, Notice } from '../components/ui'
 
-// C14 Contact
 export default function Contact() {
   const { user } = useAuth()
   const blank = { name: user?.name || '', email: user?.email || '', phone: user?.phone || '', message: '' }

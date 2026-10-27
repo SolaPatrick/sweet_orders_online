@@ -1,7 +1,6 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** products and product_options tables. */
 class Product_model extends Model
 {
     protected $table = 'products';
@@ -10,78 +9,66 @@ class Product_model extends Model
         'lead_time_hours', 'is_customizable', 'is_available', 'is_featured',
     ];
 
-    /**
-     * Product list with search, category, price and availability filters.
-     * Returns [rows, total].
-     */
-    public function search(array $f, int $limit, int $offset): array
+    private const COLUMNS = 'p.id, p.category_id, p.name, p.slug, p.description, p.base_price, p.image, p.lead_time_hours,
+        p.is_customizable, p.is_available, p.is_featured, p.created_at, p.updated_at,
+        c.name AS category_name, c.slug AS category_slug';
+
+    private const GROUP_ORDER = ['size' => 1, 'flavor' => 2, 'frosting' => 3];
+
+    public function search(array $f): array
     {
-        $where = ['1 = 1'];
-        $args = [];
+        $this->db->table('products p')
+            ->select(self::COLUMNS . ', c.sort_order AS category_sort')
+            ->inner_join('categories c', 'c.id = p.category_id');
 
         if (!empty($f['category'])) {
-            if (ctype_digit((string) $f['category'])) {
-                $where[] = 'p.category_id = ?';
-            } else {
-                $where[] = 'c.slug = ?';
-            }
-            $args[] = $f['category'];
+            ctype_digit((string) $f['category'])
+                ? $this->db->where('p.category_id', (int) $f['category'])
+                : $this->db->where('c.slug', $f['category']);
         }
         if (!empty($f['q'])) {
-            $where[] = '(p.name LIKE ? OR p.description LIKE ?)';
-            $args[] = '%' . $f['q'] . '%';
-            $args[] = '%' . $f['q'] . '%';
+            $like = '%' . $f['q'] . '%';
+            $this->db->grouped(function ($db) use ($like) {
+                $db->like('p.name', $like)->or_like('p.description', $like);
+            });
         }
         if (isset($f['min']) && $f['min'] !== '' && is_numeric($f['min'])) {
-            $where[] = 'p.base_price >= ?';
-            $args[] = $f['min'];
+            $this->db->where('p.base_price', '>=', $f['min']);
         }
         if (isset($f['max']) && $f['max'] !== '' && is_numeric($f['max'])) {
-            $where[] = 'p.base_price <= ?';
-            $args[] = $f['max'];
+            $this->db->where('p.base_price', '<=', $f['max']);
         }
         if (!empty($f['available'])) {
-            $where[] = 'p.is_available = 1';
+            $this->db->where('p.is_available', 1);
         }
         if (!empty($f['featured'])) {
-            $where[] = 'p.is_featured = 1';
+            $this->db->where('p.is_featured', 1);
         }
+        $rows = array_map([$this, 'cast'], $this->db->get_all());
 
         $sorts = [
-            'featured'   => 'p.is_featured DESC, c.sort_order, p.name',
-            'price_asc'  => 'p.base_price ASC, p.name',
-            'price_desc' => 'p.base_price DESC, p.name',
-            'newest'     => 'p.created_at DESC, p.id DESC',
-            'name'       => 'p.name ASC',
+            'featured'   => function ($a, $b) { return [$b['is_featured'], $a['category_sort']] <=> [$a['is_featured'], $b['category_sort']] ?: strcasecmp($a['name'], $b['name']); },
+            'price_asc'  => function ($a, $b) { return $a['base_price'] <=> $b['base_price'] ?: strcasecmp($a['name'], $b['name']); },
+            'price_desc' => function ($a, $b) { return $b['base_price'] <=> $a['base_price'] ?: strcasecmp($a['name'], $b['name']); },
+            'newest'     => function ($a, $b) { return [$b['created_at'], $b['id']] <=> [$a['created_at'], $a['id']]; },
+            'name'       => function ($a, $b) { return strcasecmp($a['name'], $b['name']); },
         ];
-        $order = $sorts[$f['sort'] ?? 'featured'] ?? $sorts['featured'];
-        $sql_where = implode(' AND ', $where);
+        usort($rows, $sorts[$f['sort'] ?? 'featured'] ?? $sorts['featured']);
 
-        $total = (int) $this->db->raw(
-            "SELECT COUNT(*) FROM products p JOIN categories c ON c.id = p.category_id WHERE {$sql_where}",
-            $args
-        )->fetchColumn();
-
-        $rows = $this->db->raw(
-            "SELECT p.*, c.name AS category_name, c.slug AS category_slug
-             FROM products p JOIN categories c ON c.id = p.category_id
-             WHERE {$sql_where}
-             ORDER BY {$order}
-             LIMIT " . (int) $limit . ' OFFSET ' . (int) $offset,
-            $args
-        )->fetchAll();
-
-        return [array_map([$this, 'cast'], $rows), $total];
+        return array_map(function ($p) {
+            unset($p['category_sort']);
+            return $p;
+        }, $rows);
     }
 
     public function detail(int $id)
     {
-        $row = $this->db->raw(
-            'SELECT p.*, c.name AS category_name, c.slug AS category_slug
-             FROM products p JOIN categories c ON c.id = p.category_id
-             WHERE p.id = ? LIMIT 1',
-            [$id]
-        )->fetch();
+        $row = $this->db->table('products p')
+            ->select(self::COLUMNS)
+            ->inner_join('categories c', 'c.id = p.category_id')
+            ->where('p.id', $id)
+            ->limit(1)
+            ->get();
         if (!$row) return null;
         $row = $this->cast($row);
         $row['options'] = $this->options($id);
@@ -90,21 +77,20 @@ class Product_model extends Model
 
     public function options(int $product_id): array
     {
-        $rows = $this->db->raw(
-            "SELECT * FROM product_options WHERE product_id = ?
-             ORDER BY FIELD(option_group, 'size', 'flavor', 'frosting'), sort_order, id",
-            [$product_id]
-        )->fetchAll();
-        return array_map(function ($o) {
+        $rows = array_map(function ($o) {
             $o['id'] = (int) $o['id'];
             $o['product_id'] = (int) $o['product_id'];
             $o['price_add'] = (float) $o['price_add'];
             $o['sort_order'] = (int) $o['sort_order'];
             return $o;
-        }, $rows);
+        }, $this->db->table('product_options')->where('product_id', $product_id)->get_all());
+        usort($rows, function ($a, $b) {
+            return [self::GROUP_ORDER[$a['option_group']] ?? 0, $a['sort_order'], $a['id']]
+               <=> [self::GROUP_ORDER[$b['option_group']] ?? 0, $b['sort_order'], $b['id']];
+        });
+        return $rows;
     }
 
-    /** Replace a product's options with the given list. */
     public function replace_options(int $product_id, array $options): void
     {
         $keep = [];
@@ -127,25 +113,31 @@ class Product_model extends Model
                 $keep[] = (int) $this->db->last_id();
             }
         }
+        $this->db->table('product_options')->where('product_id', $product_id);
         if ($keep) {
-            $marks = implode(',', array_fill(0, count($keep), '?'));
-            $this->db->raw("DELETE FROM product_options WHERE product_id = ? AND id NOT IN ({$marks})", array_merge([$product_id], $keep));
-        } else {
-            $this->db->raw('DELETE FROM product_options WHERE product_id = ?', [$product_id]);
+            $this->db->not_in('id', $keep);
         }
+        $this->db->delete();
     }
 
     public function slug_taken(string $slug, $except_id = null): bool
     {
-        return (bool) $this->db->raw(
-            'SELECT id FROM products WHERE slug = ? AND id <> ? LIMIT 1',
-            [$slug, (int) $except_id]
-        )->fetch();
+        return (bool) $this->db->table($this->table)
+            ->select('id')
+            ->where('slug', $slug)
+            ->where('id', '<>', (int) $except_id)
+            ->limit(1)
+            ->get();
+    }
+
+    public function count_in_category(int $category_id): int
+    {
+        return (int) $this->db->table($this->table)->where('category_id', $category_id)->count();
     }
 
     public function cast(array $p): array
     {
-        foreach (['id', 'category_id', 'lead_time_hours', 'is_customizable', 'is_available', 'is_featured'] as $k) {
+        foreach (['id', 'category_id', 'lead_time_hours', 'is_customizable', 'is_available', 'is_featured', 'category_sort'] as $k) {
             if (isset($p[$k])) $p[$k] = (int) $p[$k];
         }
         $p['base_price'] = (float) $p['base_price'];

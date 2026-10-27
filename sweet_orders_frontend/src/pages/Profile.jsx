@@ -3,7 +3,6 @@ import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field, Notice } from '../components/ui'
 
-// C12 Profile: details and password
 export default function Profile() {
   const { user, setUser } = useAuth()
   const [details, setDetails] = useState({ name: user.name, phone: user.phone || '' })

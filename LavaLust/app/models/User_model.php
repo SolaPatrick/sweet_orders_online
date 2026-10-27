@@ -1,7 +1,6 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
-/** users table: customers and café staff. */
 class User_model extends Model
 {
     protected $table = 'users';
@@ -19,7 +18,6 @@ class User_model extends Model
         return $this->insert($data);
     }
 
-    /** User row without the password hash, safe to send to the browser. */
     public function public_fields($user)
     {
         if (!$user) return null;

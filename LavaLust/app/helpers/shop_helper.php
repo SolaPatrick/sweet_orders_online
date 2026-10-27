@@ -1,27 +1,36 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
-/**
- * Small shop helpers shared by models and controllers.
- * Autoloaded in app/config/autoload.php.
- */
 
 if (!function_exists('product_image_url')) {
-    /** Public URL of an uploaded product photo. */
     function product_image_url(string $file): string
     {
-        // Photos stored on Cloudinary are saved as their full URL
         if (preg_match('#^https?://#i', $file)) {
             return $file;
         }
-        $base = rtrim(getenv('APP_URL') ?: '', '/');
-        return $base . '/uploads/products/' . rawurlencode($file);
+        return base_url('uploads/products/' . $file);
     }
 }
 
 if (!function_exists('order_hold_minutes')) {
-    /** Minutes an unpaid order keeps its slot (ORDER_HOLD_MINUTES, at least 5). */
     function order_hold_minutes(): int
     {
-        return max(5, (int) (getenv('ORDER_HOLD_MINUTES') ?: 60));
+        return (int) config_item('order_hold_minutes');
+    }
+}
+
+if (!function_exists('normalize_phone')) {
+    function normalize_phone($phone)
+    {
+        $phone = preg_replace('/[\s-]/', '', (string) $phone);
+        if ($phone === '') return null;
+        return strpos($phone, '+63') === 0 ? '0' . substr($phone, 3) : $phone;
+    }
+}
+
+if (!function_exists('slugify')) {
+    function slugify(string $text): string
+    {
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9]+/', '-', $text), '-'));
+        return $slug !== '' ? $slug : 'item-' . time();
     }
 }

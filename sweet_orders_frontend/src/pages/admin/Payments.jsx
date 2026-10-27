@@ -4,7 +4,6 @@ import { Empty, ErrorBox, Field, Loader, Pagination, StatusBadge, useApi } from 
 
 const PAY_LABELS = { pending: 'Pending', paid: 'Paid', failed: 'Failed', expired: 'Expired' }
 
-// A8 Payments
 export default function Payments() {
   const [params, setParams] = useSearchParams()
   const filters = { q: params.get('q') || '', status: params.get('status') || '', method: params.get('method') || '', page: params.get('page') || 1 }

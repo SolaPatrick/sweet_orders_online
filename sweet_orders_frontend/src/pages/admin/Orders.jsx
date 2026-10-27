@@ -2,7 +2,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { clock, peso, shortDate, STATUS_LABELS } from '../../lib/format'
 import { Empty, ErrorBox, Field, Loader, Pagination, Segmented, StatusBadge, useApi } from '../../components/ui'
 
-// A2 Orders list with filters
 export default function Orders() {
   const [params, setParams] = useSearchParams()
   const filters = {

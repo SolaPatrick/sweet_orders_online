@@ -29,7 +29,6 @@ import Slots from './pages/admin/Slots'
 import Payments from './pages/admin/Payments'
 import Notifications from './pages/admin/Notifications'
 
-// Page codes (C1–C15, A1–A9) match the Sweet Orders Online site map.
 export default function App() {
   return (
     <Routes>

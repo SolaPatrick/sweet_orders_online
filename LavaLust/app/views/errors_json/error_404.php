@@ -1,10 +1,5 @@
 <?php
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
-/*
- * JSON error response. Sweet Orders is an API-only backend, so every
- * framework error (404, PHP error, exception, database error) is returned
- * as JSON instead of an HTML page. Details are shown only in development.
- */
 while (ob_get_level() > 0) {
     ob_end_clean();
 }

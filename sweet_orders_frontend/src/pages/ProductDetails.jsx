@@ -7,7 +7,6 @@ import NotFound from './NotFound'
 
 const GROUPS = ['size', 'flavor', 'frosting']
 
-// C3 Product details: options, cake message, live price, add to cart
 export default function ProductDetails() {
   const { id } = useParams()
   const { data, loading, error, reload } = useApi(`/products/${id}`)
