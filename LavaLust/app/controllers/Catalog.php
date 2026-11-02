@@ -10,6 +10,15 @@ class Catalog extends MY_Api_Controller
         $this->api->respond(['data' => $this->Category_model->all_with_counts()]);
     }
 
+    public function addons()
+    {
+        $this->api->require_method('GET');
+        $this->call->model('Addon_model');
+        $this->api->respond(['data' => array_map(function ($a) {
+            return ['id' => $a['id'], 'name' => $a['name'], 'price' => $a['price'], 'has_text' => $a['has_text']];
+        }, $this->Addon_model->listing(true))]);
+    }
+
     public function allergens()
     {
         $this->api->require_method('GET');

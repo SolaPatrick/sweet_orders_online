@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { peso, slotLabel, methodLabel } from '../lib/format'
+import { isCashOrder, peso, slotLabel, methodLabel } from '../lib/format'
 import { ErrorBox, Loader } from '../components/ui'
 
 export default function OrderConfirmed() {
@@ -27,12 +27,13 @@ export default function OrderConfirmed() {
   if (!order) return <Loader />
   const paid = order.payment_status === 'paid'
   const method = order.payments.find((p) => p.status === 'paid')?.method
+  const cashDue = !paid && isCashOrder(order) && order.status !== 'cancelled'
 
   return (
     <div className="container page narrow">
       <div className="card result">
-        <div className="result-icon">{paid ? '✓' : '…'}</div>
-        <h1>{paid ? 'Thank you! Your order is confirmed' : 'Waiting for payment confirmation'}</h1>
+        <div className="result-icon">{paid || cashDue ? '✓' : '…'}</div>
+        <h1>{paid ? 'Thank you! Your order is confirmed' : cashDue ? 'Your order is confirmed' : 'Waiting for payment confirmation'}</h1>
         <p className="muted">
           Order {order.order_number}
           {paid && method ? ` · Paid · ${methodLabel(method)}` : ''}
@@ -47,14 +48,16 @@ export default function OrderConfirmed() {
             <span>{order.items.map((i) => `${i.product_name} × ${i.quantity}`).join(', ')}</span>
           </div>
           <div className="kv total">
-            <span>{paid ? 'Total paid' : 'Total'}</span>
+            <span>{paid ? 'Total paid' : cashDue ? 'Pay at the counter' : 'Total'}</span>
             <strong>{peso(order.total)}</strong>
           </div>
         </div>
         <p className="muted small">
           {paid
             ? 'We sent a confirmation by email and SMS. You will get another message when your order is ready.'
-            : 'If you finished paying, this page updates in a few seconds. You can also open the order later from My orders.'}
+            : cashDue
+              ? `Please pay ${peso(order.total)} in cash at the counter when you pick it up${order.claim_code ? ` and show your claim code ${order.claim_code}` : ''}. We sent the details by email and SMS.`
+              : 'If you finished paying, this page updates in a few seconds. You can also open the order later from My orders.'}
         </p>
         <div className="actions center">
           <Link to={`/orders/${order.id}`} className="btn btn-primary">

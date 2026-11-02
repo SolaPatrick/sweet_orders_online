@@ -7,6 +7,7 @@ class Order_model extends Model
     protected $fillable = [
         'order_number', 'user_id', 'slot_id', 'fulfillment', 'delivery_address', 'contact_phone',
         'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes', 'allergy_note',
+        'contact_email', 'policy_version', 'policy_accepted_at',
         'address_street', 'address_barangay', 'address_city', 'address_landmark', 'zone_id',
         'recipient_name', 'recipient_phone', 'occasion', 'pickup_name', 'pickup_phone', 'claim_code',
         'prepared_by', 'prepared_at', 'cancel_reason', 'refund_amount', 'refund_reference', 'refunded_at',
@@ -18,6 +19,7 @@ class Order_model extends Model
 
     public const NEXT_STATUS = [
         'pending_payment'  => ['cancelled'],
+        'awaiting_cash'    => ['preparing', 'cancelled'],
         'paid'             => ['preparing', 'cancelled'],
         'preparing'        => ['ready', 'out_for_delivery', 'cancelled'],
         'ready'            => ['completed', 'out_for_delivery'],
@@ -59,10 +61,14 @@ class Order_model extends Model
 
         foreach ($lines as $line) {
             $options = $line['options'];
-            unset($line['options']);
+            $addons = $line['addons'] ?? [];
+            unset($line['options'], $line['addons']);
             $line['order_id'] = $order_id;
             $this->db->table('order_items')->insert($line);
             $item_id = (int) $this->db->last_id();
+            foreach ($addons as $addon) {
+                $this->db->table('order_item_addons')->insert(array_merge($addon, ['order_item_id' => $item_id]));
+            }
             foreach ($options as $opt) {
                 $this->db->table('order_item_options')->insert([
                     'order_item_id'     => $item_id,
@@ -80,7 +86,7 @@ class Order_model extends Model
     {
         return $this->db->table('orders o')
             ->select('o.id, o.order_number, o.user_id, o.slot_id, o.fulfillment, o.delivery_address, o.contact_phone,
-                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.stock_taken, o.notes, o.allergy_note, o.created_at, o.updated_at,
+                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.stock_taken, o.notes, o.allergy_note, o.contact_email, o.policy_version, o.policy_accepted_at, o.created_at, o.updated_at,
                       o.address_street, o.address_barangay, o.address_city, o.address_landmark, o.zone_id,
                       o.recipient_name, o.recipient_phone, o.occasion, o.pickup_name, o.pickup_phone, o.claim_code,
                       o.prepared_by, o.prepared_at, o.cancel_reason, o.refund_amount, o.refund_reference, o.refunded_at,
@@ -167,7 +173,7 @@ class Order_model extends Model
     {
         return (int) $this->db->table('orders')
             ->where('user_id', $user_id)
-            ->where('status', 'pending_payment')
+            ->in('status', ['pending_payment', 'awaiting_cash'])
             ->where('payment_status', '<>', 'paid')
             ->count();
     }
@@ -241,7 +247,7 @@ class Order_model extends Model
             $like = '%' . $f['q'] . '%';
             $this->db->grouped(function ($db) use ($like) {
                 $db->like('o.order_number', $like)->or_like('u.name', $like)
-                   ->or_like('u.email', $like)->or_like('o.contact_phone', $like);
+                   ->or_like('u.email', $like)->or_like('o.contact_phone', $like)->or_like('o.contact_email', $like);
             });
         }
     }
@@ -260,6 +266,14 @@ class Order_model extends Model
     public function count_created_on(string $date): int
     {
         return (int) $this->db->table('orders')->where('DATE(created_at)', $date)->count();
+    }
+
+    public function count_cash_due(): int
+    {
+        return (int) $this->db->table('orders')
+            ->in('status', ['awaiting_cash', 'preparing', 'ready'])
+            ->where('payment_status', 'unpaid')
+            ->count();
     }
 
     public function count_with_status(array $statuses): int
@@ -311,7 +325,18 @@ class Order_model extends Model
             }
             return $this->Allergen_model->pick(array_values(array_unique($ids)));
         };
-        $order['items'] = array_map(function ($i) use ($options, $line_allergens) {
+        $addons = [];
+        if ($item_ids) {
+            foreach ($this->db->table('order_item_addons')->in('order_item_id', $item_ids)->order_by('id')->get_all() as $a) {
+                $addons[$a['order_item_id']][] = [
+                    'addon_id' => $a['addon_id'] !== null ? (int) $a['addon_id'] : null,
+                    'name'     => $a['addon_name'],
+                    'price'    => (float) $a['price'],
+                    'text'     => $a['text'],
+                ];
+            }
+        }
+        $order['items'] = array_map(function ($i) use ($options, $line_allergens, $addons) {
             return [
                 'id'           => (int) $i['id'],
                 'product_id'   => $i['product_id'] !== null ? (int) $i['product_id'] : null,
@@ -322,6 +347,8 @@ class Order_model extends Model
                 'cake_message' => $i['cake_message'],
                 'notes'        => $i['notes'],
                 'options'      => $options[$i['id']] ?? [],
+                'addons'       => $addons[$i['id']] ?? [],
+                'design_photo_url' => $i['design_photo_url'] ?? null,
                 'allergens'    => $line_allergens($i),
             ];
         }, $items);

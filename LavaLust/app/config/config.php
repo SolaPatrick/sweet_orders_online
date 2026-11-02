@@ -397,7 +397,7 @@ $config['security_headers'] = [
     'coop'               => 'same-origin',
 
     // ── API ──
-    'api_max_body' => 3145728,
+    'api_max_body' => 6291456,
     'cors' => [
         'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) getenv('CORS_ORIGINS'))))),
         'credentials'     => false,

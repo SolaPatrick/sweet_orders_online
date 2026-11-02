@@ -72,7 +72,7 @@ export default function Dashboard() {
         <div className="card stat">
           <span className="muted small">To prepare</span>
           <strong>{stats.to_prepare}</strong>
-          <span className="muted small">paid + preparing</span>
+          <span className="muted small">paid + preparing{stats.cash_due ? ` · ${stats.cash_due} cash due` : ''}</span>
         </div>
         <div className="card stat">
           <span className="muted small">Slots booked today</span>
@@ -131,6 +131,9 @@ export default function Dashboard() {
                         <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link>
                         {o.needs_new_slot && <span className="badge badge-warning">New slot</span>}
                         {o.stock_short && <span className="badge badge-warning">Short on stock</span>}
+                        {o.payment_method === 'cash' && o.payment_status !== 'paid' && o.status !== 'cancelled' && (
+                          <span className="badge badge-awaiting_cash">Cash due</span>
+                        )}
                         {o.allergy_note && (
                           <span className="badge badge-cancelled" title={o.allergy_note}>
                             Allergy note

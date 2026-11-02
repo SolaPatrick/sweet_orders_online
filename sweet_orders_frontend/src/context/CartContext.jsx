@@ -19,7 +19,14 @@ export function CartProvider({ children }) {
   }, [items])
 
   const add = useCallback((item) => {
-    const key = [item.product_id, [...item.option_ids].sort().join('-'), item.cake_message || '', item.notes || ''].join('|')
+    const key = [
+      item.product_id,
+      [...item.option_ids].sort().join('-'),
+      item.cake_message || '',
+      item.notes || '',
+      (item.addons || []).map((a) => `${a.id}:${a.text || ''}`).join(','),
+      item.design_upload_id || '',
+    ].join('|')
     setItems((list) => {
       const found = list.find((i) => i.key === key)
       if (found) {

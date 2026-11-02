@@ -9,6 +9,7 @@ const LINKS = [
   ['/admin/categories', 'Categories', false, true],
   ['/admin/slots', 'Time slots', false, true],
   ['/admin/delivery-zones', 'Delivery areas', false, true],
+  ['/admin/addons', 'Cake add-ons', false, true],
   ['/admin/payments', 'Payments', false, true],
   ['/admin/reviews', 'Reviews', false, true],
   ['/admin/users', 'Users', false, true],

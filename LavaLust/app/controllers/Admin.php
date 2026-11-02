@@ -18,7 +18,8 @@ class Admin extends MY_Api_Controller
             'waiting_payment'      => $this->Order_model->count_with_status(['pending_payment']),
             'sales_today'          => $this->Payment_model->paid_total($today, $today),
             'sales_week'           => $this->Payment_model->paid_total($week_start),
-            'to_prepare'           => $this->Order_model->count_with_status(['paid', 'preparing']),
+            'to_prepare'           => $this->Order_model->count_with_status(['awaiting_cash', 'paid', 'preparing']),
+            'cash_due'             => $this->Order_model->count_cash_due(),
             'slots_booked_today'   => $slots_today['booked'],
             'slots_capacity_today' => $slots_today['capacity'],
         ];
@@ -123,6 +124,9 @@ class Admin extends MY_Api_Controller
             $extra['prepared_by'] = (int) $actor['id'];
             $extra['prepared_at'] = date('Y-m-d H:i:s');
         }
+        if ($in['status'] === 'completed' && $order['payment_status'] !== 'paid') {
+            $this->api->respond_error('This order is not paid yet. Record the cash payment first, then mark it completed.', 422);
+        }
         if ($in['status'] === 'completed' && $order['fulfillment'] === 'pickup' && $order['claim_code']) {
             $code = trim((string) ($in['claim_code'] ?? ''));
             if ($code !== $order['claim_code']) {
@@ -154,6 +158,57 @@ class Admin extends MY_Api_Controller
 
         $this->notify_order((int) $id, $in['status']);
         $this->api->respond(['message' => 'Status updated and the customer was notified.', 'data' => $this->Order_model->detail((int) $id, true)]);
+    }
+
+    public function order_cash($id)
+    {
+        $this->api->require_method('POST');
+        $in = $this->api->body();
+        $this->validate($in, [
+            'amount|Amount received' => 'required|numeric|greater_than_equal_to[0]',
+            'reference|Receipt no.'  => 'max_length[100]',
+        ]);
+        $this->call->model(['Order_model', 'Payment_model']);
+        $order = $this->Order_model->detail((int) $id);
+        if (!$order) {
+            $this->api->respond_error('Order not found.', 404);
+        }
+        $cash = null;
+        foreach ($order['payments'] as $p) {
+            if ($p['provider'] === 'cash' && $p['status'] === 'pending') {
+                $cash = $p;
+                break;
+            }
+        }
+        if (!$cash || $order['payment_status'] === 'paid' || $order['status'] === 'cancelled') {
+            $this->api->respond_error('Only an unpaid cash-at-the-counter order can be marked paid here.', 409);
+        }
+        if (round((float) $in['amount'], 2) < $order['total']) {
+            $this->fail_validation(['amount' => 'The amount is less than the order total of PHP ' . number_format($order['total'], 2) . '.']);
+        }
+        $actor = $this->user();
+        $reference = trim((string) ($in['reference'] ?? ''));
+        $change = round((float) $in['amount'] - $order['total'], 2);
+        $this->db->transaction();
+        $updated = $this->db->table('payments')->where('id', $cash['id'])->where('status', 'pending')->update([
+            'status'      => 'paid',
+            'method'      => 'cash',
+            'amount'      => $order['total'],
+            'reference'   => $reference !== '' ? $reference : 'CASH-' . $cash['id'],
+            'paid_at'     => date('Y-m-d H:i:s'),
+            'received_by' => (int) $actor['id'],
+        ]);
+        if (!$updated) {
+            $this->db->roll_back();
+            $this->api->respond_error('This payment was already recorded.', 409);
+        }
+        $next = $order['status'] === 'awaiting_cash' ? 'paid' : $order['status'];
+        $this->Order_model->set_status((int) $id, $next, 'paid');
+        $this->Order_model->add_history((int) $id, $order['status'], $next, $actor['id'],
+            'Cash PHP ' . number_format($order['total'], 2) . " received by {$actor['name']}" . ($change > 0 ? ' (change PHP ' . number_format($change, 2) . ')' : ''));
+        $this->db->commit();
+        $this->notify_order((int) $id, 'cash_received');
+        $this->api->respond(['message' => 'Cash payment recorded.' . ($change > 0 ? ' Change to give: PHP ' . number_format($change, 2) . '.' : ''), 'data' => $this->Order_model->detail((int) $id, true)]);
     }
 
     public function order_preparer($id)
@@ -491,6 +546,59 @@ class Admin extends MY_Api_Controller
         }
         $allergens = array_key_exists('allergen_ids', $in) ? (array) $in['allergen_ids'] : null;
         return [$data, $options, $ready || array_key_exists('options', $in), $allergens];
+    }
+
+    public function addons()
+    {
+        $this->api->require_method('GET');
+        $this->call->model('Addon_model');
+        $this->api->respond(['data' => $this->Addon_model->listing()]);
+    }
+
+    public function addon_create()
+    {
+        $this->api->require_method('POST');
+        $this->call->model('Addon_model');
+        $id = $this->Addon_model->insert($this->addon_input());
+        $this->api->respond(['message' => 'Add-on created.', 'data' => $this->Addon_model->cast($this->Addon_model->find((int) $id))], 201);
+    }
+
+    public function addon_update($id)
+    {
+        $this->api->require_method('PUT');
+        $this->call->model('Addon_model');
+        $addon = $this->Addon_model->find((int) $id);
+        if (!$addon) {
+            $this->api->respond_error('Add-on not found.', 404);
+        }
+        $this->Addon_model->update((int) $id, $this->addon_input((int) $id, $addon));
+        $this->api->respond(['message' => 'Add-on saved.', 'data' => $this->Addon_model->cast($this->Addon_model->find((int) $id))]);
+    }
+
+    private function addon_input(?int $id = null, ?array $current = null): array
+    {
+        $in = $this->api->body();
+        $this->validate($in, [
+            'name|Name'           => 'required|max_length[60]',
+            'price|Price'         => 'required|numeric|greater_than_equal_to[0]',
+            'has_text|Has text'   => 'in_list["0,1,true,false"]',
+            'is_active|Active'    => 'in_list["0,1,true,false"]',
+            'sort_order|Order'    => 'greater_than_equal_to[0]|pattern[int]',
+        ]);
+        $name = trim((string) $in['name']);
+        if ((float) $in['price'] > 10000) {
+            $this->fail_validation(['price' => 'Price looks too high.']);
+        }
+        if ($this->Addon_model->name_taken($name, $id)) {
+            $this->fail_validation(['name' => 'An add-on with this name already exists.']);
+        }
+        return [
+            'name'       => $name,
+            'price'      => round((float) $in['price'], 2),
+            'has_text'   => array_key_exists('has_text', $in) ? (int) $this->request->boolean('has_text') : (int) ($current['has_text'] ?? 0),
+            'is_active'  => array_key_exists('is_active', $in) ? (int) $this->request->boolean('is_active') : (int) ($current['is_active'] ?? 1),
+            'sort_order' => isset($in['sort_order']) && $in['sort_order'] !== '' ? (int) $in['sort_order'] : (int) ($current['sort_order'] ?? 0),
+        ];
     }
 
     public function categories()

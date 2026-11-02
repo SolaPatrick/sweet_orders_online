@@ -1929,6 +1929,130 @@ td .allergen-checks .check {
 .allergy-note {
   font-size: 1rem;
 }
+.addon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.addon-picker legend {
+  padding: 0 4px;
+}
+.addon-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.design-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.file-btn {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.file-btn input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.file-btn.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.design-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.design-preview img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.line-extras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 12px;
+  margin-top: 2px;
+}
+.addon-list {
+  margin: 0;
+  padding-left: 16px;
+}
+.addon-text {
+  color: var(--muted);
+}
+.design-thumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+}
+.design-thumb img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+}
+.policy-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.policy-tabs .chip {
+  text-decoration: none;
+  color: inherit;
+}
+.policy h2 {
+  margin: 20px 0 6px;
+  font-size: 1.05rem;
+}
+.policy ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.consent {
+  align-items: flex-start;
+  line-height: 1.45;
+}
+.consent input {
+  margin-top: 3px;
+  flex: none;
+}
+.badge-awaiting_cash {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.verify-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cash-due {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .stack-tight {
   display: flex;
   flex-direction: column;

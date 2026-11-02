@@ -111,6 +111,9 @@ export default function SiteLayout() {
             <Link to="/menu">Menu</Link>
             <Link to="/about">About</Link>
             <Link to="/contact">Contact</Link>
+            <Link to="/policies/terms">Terms</Link>
+            <Link to="/policies/cancellation">Cancellation</Link>
+            <Link to="/policies/privacy">Privacy</Link>
             <a href="https://facebook.com" target="_blank" rel="noreferrer">
               Facebook
             </a>

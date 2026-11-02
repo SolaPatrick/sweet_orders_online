@@ -23,10 +23,13 @@ $router->group(['prefix' => '/api'], function ($router) {
     $router->post('/auth/logout', 'Auth::logout');
     $router->post('/auth/forgot', 'Auth::forgot');
     $router->post('/auth/reset', 'Auth::reset');
+    $router->post('/auth/verify-email', 'Auth::verify_email');
 
     $router->group(['middleware' => 'auth'], function ($router) {
         $router->get('/auth/me', 'Auth::me');
         $router->put('/auth/me', 'Auth::update_me');
+        $router->post('/auth/verify-email/resend', 'Auth::resend_verification');
+        $router->post('/uploads/design', 'Uploads::design');
 
         $router->post('/orders', 'Orders::create');
         $router->get('/orders', 'Orders::index');
@@ -39,6 +42,7 @@ $router->group(['prefix' => '/api'], function ($router) {
 
     $router->get('/categories', 'Catalog::categories');
     $router->get('/allergens', 'Catalog::allergens');
+    $router->get('/addons', 'Catalog::addons');
     $router->get('/products', 'Catalog::products');
     $router->get('/products/{id}', 'Catalog::product')->where_number('id');
     $router->get('/products/{id}/reviews', 'Reviews::for_product')->where_number('id');
@@ -58,6 +62,7 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->get('/orders', 'Admin::orders');
         $router->get('/orders/{id}', 'Admin::order')->where_number('id');
         $router->put('/orders/{id}/status', 'Admin::order_status')->where_number('id');
+        $router->post('/orders/{id}/cash', 'Admin::order_cash')->where_number('id');
         $router->put('/products/{id}/stock', 'Admin::product_stock')->where_number('id');
     });
 
@@ -69,6 +74,9 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->put('/users/{id}', 'Users::update')->where_number('id');
 
         $router->get('/delivery-zones', 'Zones::admin_index');
+        $router->get('/addons', 'Admin::addons');
+        $router->post('/addons', 'Admin::addon_create');
+        $router->put('/addons/{id}', 'Admin::addon_update')->where_number('id');
         $router->post('/delivery-zones', 'Zones::create');
         $router->post('/delivery-zones/bulk', 'Zones::bulk');
         $router->put('/delivery-zones/{id}', 'Zones::update')->where_number('id');

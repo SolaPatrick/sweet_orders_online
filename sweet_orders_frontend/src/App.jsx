@@ -21,6 +21,8 @@ import About from './pages/About'
 import Contact from './pages/Contact'
 import NotFound from './pages/NotFound'
 import AccessDenied from './pages/AccessDenied'
+import VerifyEmail from './pages/VerifyEmail'
+import Policies from './pages/Policies'
 import Dashboard from './pages/admin/Dashboard'
 import AdminOrders from './pages/admin/Orders'
 import AdminOrderDetail from './pages/admin/OrderDetail'
@@ -32,6 +34,7 @@ import Payments from './pages/admin/Payments'
 import Notifications from './pages/admin/Notifications'
 import Users from './pages/admin/Users'
 import DeliveryZones from './pages/admin/DeliveryZones'
+import Addons from './pages/admin/Addons'
 import Reviews from './pages/admin/Reviews'
 
 export default function App() {
@@ -49,6 +52,9 @@ export default function App() {
         <Route path="register" element={<Register />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
+        <Route path="verify-email" element={<VerifyEmail />} />
+        <Route path="policies" element={<Policies />} />
+        <Route path="policies/:slug" element={<Policies />} />
         <Route path="orders" element={<RequireAuth><MyOrders /></RequireAuth>} />
         <Route path="orders/:id" element={<RequireAuth><OrderDetails /></RequireAuth>} />
         <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
@@ -67,6 +73,7 @@ export default function App() {
         <Route path="categories" element={<RequireAdmin><Categories /></RequireAdmin>} />
         <Route path="slots" element={<RequireAdmin><Slots /></RequireAdmin>} />
         <Route path="delivery-zones" element={<RequireAdmin><DeliveryZones /></RequireAdmin>} />
+        <Route path="addons" element={<RequireAdmin><Addons /></RequireAdmin>} />
         <Route path="payments" element={<RequireAdmin><Payments /></RequireAdmin>} />
         <Route path="reviews" element={<RequireAdmin><Reviews /></RequireAdmin>} />
         <Route path="users" element={<RequireAdmin><Users /></RequireAdmin>} />

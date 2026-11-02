@@ -21,12 +21,24 @@ class Orders extends MY_Api_Controller
             'pickup_name|Pickup name'         => 'max_length[100]',
             'pickup_phone|Pickup mobile'      => ['', self::MOBILE_PATTERN],
             'allergy_note|Allergy note'       => 'max_length[500]',
+            'contact_email|Email for updates' => 'valid_email|max_length[255]',
         ]);
+        if (!in_array($in['accept_policies'] ?? null, [true, 1, '1', 'true'], true)) {
+            $this->fail_validation(['accept_policies' => 'Please agree to the Terms, Cancellation policy and Privacy notice to place your order.'], 'Please agree to our policies to place your order.');
+        }
+        $cash = ($in['payment_method'] ?? '') === 'cash';
+        if ($cash && $in['fulfillment'] !== 'pickup') {
+            $this->fail_validation(['payment_method' => 'Cash at the counter is only for pickup orders.'], 'Cash at the counter is only for pickup orders.');
+        }
+        if ($cash && empty($user['email_verified_at'])) {
+            $this->fail_validation(['payment_method' => 'Please verify your email first. Open the link we emailed you, or send a new one.'], 'Verify your email to pay at the counter.');
+        }
         if (count($in['items']) > 30) {
             $this->api->respond_error('Your cart has too many lines.', 422);
         }
 
-        $this->call->model(['Product_model', 'Slot_model', 'Order_model', 'Zone_model']);
+        $this->call->model(['Product_model', 'Slot_model', 'Order_model', 'Zone_model', 'Addon_model', 'Design_upload_model']);
+        $addon_list = $this->Addon_model->active_by_id();
         $zone = null;
         $delivery_fee = 0.0;
         $address = [];
@@ -91,9 +103,43 @@ class Orders extends MY_Api_Controller
                 $errors["items.{$i}"] = 'Cake message is limited to 100 characters and notes to 255.';
                 continue;
             }
-            if ($product['product_type'] === 'ready_made' && ((array) ($item['option_ids'] ?? []) || $message !== '')) {
-                $errors["items.{$i}"] = "{$product['name']} is ready-made, so options and a cake message can't be added. Please remove it and add it again.";
+            $wanted_addons = (array) ($item['addons'] ?? []);
+            $design_id = (int) ($item['design_upload_id'] ?? 0);
+            if ($product['product_type'] === 'ready_made' && ((array) ($item['option_ids'] ?? []) || $message !== '' || $wanted_addons || $design_id)) {
+                $errors["items.{$i}"] = "{$product['name']} is ready-made, so options, a cake message, add-ons or a design photo can't be added. Please remove it and add it again.";
                 continue;
+            }
+            if (($wanted_addons || $design_id) && !$product['is_customizable']) {
+                $errors["items.{$i}"] = "Add-ons and design photos are only for custom cakes, not {$product['name']}.";
+                continue;
+            }
+            $addons = [];
+            foreach ($wanted_addons as $a) {
+                $aid = (int) (is_array($a) ? ($a['id'] ?? 0) : $a);
+                if (!isset($addon_list[$aid])) {
+                    $errors["items.{$i}"] = "An add-on chosen for {$product['name']} is not available any more.";
+                    continue 2;
+                }
+                $text = $addon_list[$aid]['has_text'] && is_array($a) ? trim((string) ($a['text'] ?? '')) : '';
+                if (mb_strlen($text) > 150) {
+                    $errors["items.{$i}"] = "The {$addon_list[$aid]['name']} message is limited to 150 characters.";
+                    continue 2;
+                }
+                $addons[$aid] = [
+                    'addon_id'   => $aid,
+                    'addon_name' => $addon_list[$aid]['name'],
+                    'price'      => $addon_list[$aid]['price'],
+                    'text'       => $text !== '' ? $text : null,
+                ];
+            }
+            $design_url = null;
+            if ($design_id) {
+                $upload = $this->Design_upload_model->owned($design_id, (int) $user['id']);
+                if (!$upload) {
+                    $errors["items.{$i}"] = "The design photo for {$product['name']} could not be found. Please upload it again.";
+                    continue;
+                }
+                $design_url = $upload['url'];
             }
 
             $chosen = [];
@@ -113,7 +159,7 @@ class Orders extends MY_Api_Controller
                 }
             }
 
-            $unit = $product['base_price'] + array_sum(array_column($chosen, 'price_add'));
+            $unit = $product['base_price'] + array_sum(array_column($chosen, 'price_add')) + array_sum(array_column($addons, 'price'));
             $line_total = round($unit * $qty, 2);
             $subtotal += $line_total;
             $lead_hours = max($lead_hours, $product['lead_time_hours']);
@@ -130,7 +176,9 @@ class Orders extends MY_Api_Controller
                 'line_total'   => $line_total,
                 'cake_message' => $product['is_customizable'] && $message !== '' ? $message : null,
                 'notes'        => $notes !== '' ? $notes : null,
+                'design_photo_url' => $design_url,
                 'options'      => array_values($chosen),
+                'addons'       => array_values($addons),
             ];
         }
         if ($errors) {
@@ -193,6 +241,7 @@ class Orders extends MY_Api_Controller
             'fulfillment'      => $in['fulfillment'],
             'delivery_address' => null,
             'contact_phone'    => $contact_phone,
+            'contact_email'    => strtolower($text('contact_email') ?? $user['email']),
             'recipient_name'   => $text('recipient_name'),
             'recipient_phone'  => $text('recipient_phone') ? normalize_phone($in['recipient_phone']) : null,
             'occasion'         => $text('occasion'),
@@ -202,12 +251,28 @@ class Orders extends MY_Api_Controller
             'subtotal'         => $subtotal,
             'delivery_fee'     => $delivery_fee,
             'total'            => round($subtotal + $delivery_fee, 2),
-            'status'           => 'pending_payment',
+            'status'           => $cash ? 'awaiting_cash' : 'pending_payment',
             'payment_status'   => 'unpaid',
             'notes'            => !empty($in['notes']) ? $in['notes'] : null,
             'allergy_note'     => $text('allergy_note'),
+            'policy_version'   => config_item('policy_version'),
+            'policy_accepted_at' => date('Y-m-d H:i:s'),
         ], $address), $lines);
-        $this->Order_model->add_history($order_id, null, 'pending_payment', $user['id'], 'Order placed');
+        $this->Order_model->add_history($order_id, null, $cash ? 'awaiting_cash' : 'pending_payment', $user['id'], $cash ? 'Order placed, pay in cash at the counter' : 'Order placed');
+        if ($cash) {
+            $short = $this->Product_model->take_stock($order_id);
+            if ($short) {
+                $this->db->roll_back();
+                $this->fail_validation(['items' => implode(', ', $short) . ' just sold out. Please update your cart.'], 'Some items just sold out.');
+            }
+            $this->db->table('payments')->insert([
+                'order_id' => $order_id,
+                'provider' => 'cash',
+                'method'   => 'cash',
+                'amount'   => round($subtotal + $delivery_fee, 2),
+                'status'   => 'pending',
+            ]);
+        }
         $this->db->commit();
 
         if ($zone) {
@@ -219,8 +284,10 @@ class Orders extends MY_Api_Controller
             ]);
         }
 
-        $this->notify_order($order_id, 'order_placed');
-        $payment = $this->start_payment($order_id, $in['payment_method'] ?? null);
+        $this->notify_order($order_id, $cash ? 'order_placed_cash' : 'order_placed');
+        $payment = $cash
+            ? ['mode' => 'cash', 'checkout_url' => $this->frontend_url('/order-confirmed/' . $order_id)]
+            : $this->start_payment($order_id, $in['payment_method'] ?? null);
         $this->api->respond([
             'message' => 'Order placed.',
             'order'   => $this->Order_model->detail($order_id),
@@ -263,6 +330,9 @@ class Orders extends MY_Api_Controller
         if ($order['payment_status'] === 'paid') {
             $this->api->respond_error('This order is already paid.', 409);
         }
+        if ($order['status'] === 'awaiting_cash') {
+            $this->api->respond_error('This order is paid in cash at the counter when you pick it up.', 409);
+        }
         if ($order['status'] !== 'pending_payment') {
             $this->api->respond_error('This order can no longer be paid. Its time slot hold has ended; please place a new order.', 409);
         }
@@ -273,14 +343,15 @@ class Orders extends MY_Api_Controller
     {
         $this->api->require_method('POST');
         $order = $this->own_order((int) $id);
-        if ($order['status'] !== 'pending_payment' || $order['payment_status'] === 'paid') {
+        if (!in_array($order['status'], ['pending_payment', 'awaiting_cash'], true) || $order['payment_status'] === 'paid') {
             $this->api->respond_error('Only unpaid orders can be cancelled here. Please contact the café.', 409);
         }
-        $this->call->model(['Slot_model', 'Payment_model']);
+        $this->call->model(['Slot_model', 'Payment_model', 'Product_model']);
         $this->db->transaction();
         $this->Order_model->change_status($order, 'cancelled', $this->user()['id'], 'Cancelled by the customer');
         $this->Slot_model->release_one((int) $order['slot_id']);
         $this->Payment_model->expire_pending((int) $id);
+        $this->Product_model->return_stock((int) $id);
         $this->db->commit();
         $this->notify_order((int) $id, 'cancelled');
         $this->api->respond(['message' => 'Order cancelled.', 'data' => $this->Order_model->detail((int) $id)]);

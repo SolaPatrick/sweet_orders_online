@@ -7,6 +7,8 @@ class Notifier
 
     private const TEMPLATES = [
         'order_placed'      => ['Order {number} received', "Hi {name}, we received your order {number} for {schedule}. Total: {total}. Please complete payment to confirm it."],
+        'order_placed_cash' => ['Order {number} confirmed: pay at the counter', "Hi {name}, your order {number} is confirmed for {schedule}. Please pay {total} in cash at the counter when you pick it up.{pickup}"],
+        'cash_received'     => ['Cash payment received for {number}', "Hi {name}, we received your cash payment of {total} for order {number}. Thank you!"],
         'payment_confirmed' => ['Payment received for {number}', "Hi {name}, we received your payment of {total} for order {number}. We will start preparing it for {schedule}."],
         'preparing'         => ['Order {number} is being prepared', "Hi {name}, your order {number} is now being prepared."],
         'ready'             => ['Order {number} is ready for pickup', "Hi {name}, your order {number} is ready for pickup at Clayanna's Café ({schedule}).{pickup}"],
@@ -41,8 +43,9 @@ class Notifier
         $subject = strtr($subject, $vars);
         $message = strtr($message, $vars);
 
-        if (!empty($order['customer_email'])) {
-            $this->email($order['customer_email'], $subject, $message . "\n\nClayanna's Café · Sweet Orders Online", $event, (int) $order['id'], (int) $order['user_id']);
+        $to = !empty($order['contact_email']) ? $order['contact_email'] : ($order['customer_email'] ?? null);
+        if (!empty($to)) {
+            $this->email($to, $subject, $message . "\n\nClayanna's Café · Sweet Orders Online", $event, (int) $order['id'], (int) $order['user_id']);
         }
         $phone = $order['contact_phone'] ?: ($order['customer_phone'] ?? null);
         if ($phone) {

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { api } from '../api/client'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import { ALLERGEN_DISCLAIMER, availability, dateTime, isReadyMade, maxQuantity, mergeAllergens, peso } from '../lib/format'
@@ -30,15 +31,54 @@ function ProductView({ product }) {
   const [notes, setNotes] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [added, setAdded] = useState(false)
+  const [addonPick, setAddonPick] = useState({})
+  const [design, setDesign] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
 
   const ready = isReadyMade(product)
+  const customizable = Boolean(product.is_customizable) && !ready
+  const addonsApi = useApi(customizable ? '/addons' : null)
+  const addonList = addonsApi.data?.data || []
+  const pickedAddons = addonList
+    .filter((a) => addonPick[a.id])
+    .map((a) => ({ id: a.id, name: a.name, price: a.price, text: a.has_text ? addonPick[a.id].text.trim() : '' }))
   const maxQty = maxQuantity(product)
   const badge = availability(product)
   const canBuy = product.is_available && (!ready || maxQty > 0)
   const selected = groups.map((g) => g.options.find((o) => o.id === chosen[g.group])).filter(Boolean)
-  const unitPrice = product.base_price + selected.reduce((n, o) => n + o.price_add, 0)
+  const unitPrice = product.base_price + selected.reduce((n, o) => n + o.price_add, 0) + pickedAddons.reduce((n, a) => n + a.price, 0)
   const { user } = useAuth()
   const contains = mergeAllergens(product.allergens || [], ...selected.map((o) => o.allergens || []))
+
+  const upload = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('The photo must be 5 MB or smaller.')
+      return
+    }
+    setUploading(true)
+    setUploadError('')
+    try {
+      const fd = new FormData()
+      fd.append('photo', file)
+      const res = await api('/uploads/design', { method: 'POST', body: fd })
+      setDesign(res.data)
+    } catch (err) {
+      setUploadError(err.errors?.photo || err.message)
+    }
+    setUploading(false)
+  }
+
+  const toggleAddon = (a, on) =>
+    setAddonPick((p) => {
+      const next = { ...p }
+      if (on) next[a.id] = { text: '' }
+      else delete next[a.id]
+      return next
+    })
 
   const addToCart = () => {
     add({
@@ -55,6 +95,9 @@ function ProductView({ product }) {
       product_type: product.product_type,
       max_qty: maxQty,
       allergens: contains.map((a) => ({ id: a.id, name: a.name })),
+      addons: customizable ? pickedAddons : [],
+      design_upload_id: customizable && design ? design.id : null,
+      design_photo_url: customizable && design ? design.url : null,
     })
     setAdded(true)
   }
@@ -103,6 +146,52 @@ function ProductView({ product }) {
               <input maxLength={100} value={message} placeholder="Happy Birthday, Ana!" onChange={(e) => setMessage(e.target.value)} />
             </Field>
           ) : null}
+          {customizable && addonList.length > 0 && (
+            <fieldset className="addon-picker">
+              <legend className="field-label">Add-ons (optional, per cake)</legend>
+              {addonList.map((a) => (
+                <div key={a.id} className="addon-row">
+                  <label className="check">
+                    <input type="checkbox" checked={!!addonPick[a.id]} onChange={(e) => toggleAddon(a, e.target.checked)} />
+                    {a.name} <span className="muted">+{peso(a.price)}</span>
+                  </label>
+                  {a.has_text && addonPick[a.id] ? (
+                    <input
+                      maxLength={150}
+                      value={addonPick[a.id].text}
+                      aria-label={`${a.name} message`}
+                      placeholder={`Message for the ${a.name.toLowerCase()} (optional, 150 characters)`}
+                      onChange={(e) => setAddonPick((p) => ({ ...p, [a.id]: { text: e.target.value } }))}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </fieldset>
+          )}
+          {customizable && (
+            <div className="design-upload">
+              <span className="field-label">Design reference (optional)</span>
+              {design ? (
+                <div className="design-preview">
+                  <img src={design.url} alt="Your design reference" />
+                  <button type="button" className="link-button danger" onClick={() => setDesign(null)}>
+                    Remove photo
+                  </button>
+                </div>
+              ) : user ? (
+                <label className={`btn btn-small file-btn ${uploading ? 'disabled' : ''}`}>
+                  {uploading ? 'Uploading…' : 'Upload a design reference'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={upload} disabled={uploading} />
+                </label>
+              ) : (
+                <span className="small">
+                  <Link to="/login">Log in</Link> to upload a photo of a design you like.
+                </span>
+              )}
+              <span className="muted small">JPG, PNG or WEBP, up to 5 MB. A photo of a cake you like helps our baker.</span>
+              {uploadError && <span className="field-error">{uploadError}</span>}
+            </div>
+          )}
           <div className="allergen-box" aria-live="polite">
             {contains.length ? <AllergenLine allergens={contains} mine={user?.allergies} /> : <div className="contains small">No allergens listed.</div>}
             {product.ingredients && (

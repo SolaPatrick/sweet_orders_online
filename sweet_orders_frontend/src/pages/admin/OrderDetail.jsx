@@ -19,6 +19,7 @@ import {
 import { ErrorBox, Field, FormDialog, Loader, Notice, StatusBadge, Toggle, useApi } from '../../components/ui'
 import OrderHistory from '../../components/OrderHistory'
 import { AllergenLine } from '../../components/Allergens'
+import LineExtras from '../../components/LineExtras'
 
 const ACTION_TEXT = {
   preparing: 'Mark as Preparing',
@@ -44,10 +45,15 @@ export default function OrderDetail() {
   const order = data.data
   const payment = order.payments.find((p) => p.status === 'paid') || order.payments[0]
   const next = order.next_statuses.filter(
-    (s) => s !== 'cancelled' && !(order.fulfillment === 'pickup' && s === 'out_for_delivery') && !(order.fulfillment === 'delivery' && s === 'ready'),
+    (s) =>
+      s !== 'cancelled' &&
+      !(order.fulfillment === 'pickup' && s === 'out_for_delivery') &&
+      !(order.fulfillment === 'delivery' && s === 'ready') &&
+      !(s === 'completed' && order.payment_status !== 'paid'),
   )
   const needsCode = order.fulfillment === 'pickup' && Boolean(order.claim_code)
   const canRefund = isAdmin && order.status === 'cancelled' && order.payment_status === 'paid'
+  const cashDue = order.payments.some((p) => p.provider === 'cash' && p.status === 'pending') && order.payment_status !== 'paid' && order.status !== 'cancelled'
 
   const open = (name, initial = {}) => {
     setForm(initial)
@@ -98,7 +104,9 @@ export default function OrderDetail() {
           Placed {dateTime(order.created_at)} · {order.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'} ·{' '}
           {order.payment_status === 'paid'
             ? `Paid${payment?.method ? ` · ${methodLabel(payment.method)}` : ''}`
-            : label(PAYMENT_LABELS, order.payment_status)}
+            : cashDue
+              ? 'Cash due at the counter'
+              : label(PAYMENT_LABELS, order.payment_status)}
         </span>
       </div>
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
@@ -106,6 +114,16 @@ export default function OrderDetail() {
       {order.allergy_note && (
         <div className="alert alert-error allergy-note" role="note">
           <strong>Allergy note from the customer:</strong> {order.allergy_note}
+        </div>
+      )}
+      {cashDue && (
+        <div className="alert alert-warning cash-due">
+          <span>
+            <strong>Pay at the counter:</strong> collect {pesoExact(order.total)} in cash when the customer picks up, then record it here. Prepare the order as usual.
+          </span>
+          <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => open('cash', { amount: String(order.total), reference: '' })}>
+            Record cash payment
+          </button>
         </div>
       )}
       {order.stock_short && (
@@ -125,6 +143,8 @@ export default function OrderDetail() {
           <div className="muted small">
             {order.status === 'pending_payment'
               ? `Waiting for the customer to pay. The slot is held until ${timeOnly(order.hold_expires_at)}.`
+              : cashDue && order.status === 'ready'
+                ? 'Waiting for the customer to pick up and pay in cash. Record the cash payment, then mark it completed.'
               : next.length
                 ? `Next: ${next.map((s) => label(STATUS_LABELS, s)).join(' or ')}. The customer gets an email and SMS at each step.`
                 : 'No further steps.'}
@@ -161,6 +181,7 @@ export default function OrderDetail() {
                 <div className="muted small">
                   {[optionText(i.options), i.cake_message && `Message: "${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <LineExtras addons={i.addons} photoUrl={i.design_photo_url} />
                 <AllergenLine allergens={i.allergens} />
               </div>
               <strong>{peso(i.line_total)}</strong>
@@ -182,6 +203,14 @@ export default function OrderDetail() {
             <p>{order.customer_name}</p>
             <p className="muted">
               {order.contact_phone} · {order.customer_email}
+            </p>
+            {order.contact_email && order.contact_email !== order.customer_email && (
+              <p className="small">Order updates go to: {order.contact_email}</p>
+            )}
+            <p className="muted small">
+              {order.policy_accepted_at
+                ? `Agreed to the policies (version ${order.policy_version}) on ${dateTime(order.policy_accepted_at)}`
+                : 'Placed before the consent checkbox existed.'}
             </p>
           </section>
           {(order.recipient_name || order.occasion) && (
@@ -352,6 +381,23 @@ export default function OrderDetail() {
             <input value={form.note || ''} maxLength={200} placeholder="e.g. ID checked, customer lost the SMS" onChange={field('note')} />
           </Field>
         )}
+      </FormDialog>
+
+      <FormDialog
+        open={dialog === 'cash'}
+        title="Record cash payment"
+        confirmText="Save payment"
+        busy={busy}
+        onConfirm={() => run(() => api(`/admin/orders/${order.id}/cash`, { method: 'POST', body: form }))}
+        onCancel={close}
+      >
+        <p className="muted">Order total: {pesoExact(order.total)}. Enter the cash you received; any change to give back is shown after saving.</p>
+        <Field label="Cash received (₱)" error={formErrors.amount}>
+          <input type="number" min="0" step="0.01" value={form.amount || ''} onChange={field('amount')} />
+        </Field>
+        <Field label="Receipt no. (optional)" error={formErrors.reference}>
+          <input value={form.reference || ''} maxLength={100} onChange={field('reference')} />
+        </Field>
       </FormDialog>
 
       <FormDialog

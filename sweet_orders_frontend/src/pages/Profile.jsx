@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field, Notice, useApi } from '../components/ui'
 import { AllergenChecks } from '../components/Allergens'
+import VerifyEmailNotice from '../components/VerifyEmailNotice'
 
 export default function Profile() {
   const { user, setUser } = useAuth()
@@ -41,9 +42,14 @@ export default function Profile() {
         <Field label="Full name" error={d.errors?.name}>
           <input value={details.name} onChange={(e) => setDetails({ ...details, name: e.target.value })} />
         </Field>
-        <Field label="Email (cannot be changed)">
+        <Field label="Email (cannot be changed)" hint={user.email_verified ? 'Verified' : undefined}>
           <input value={user.email} disabled />
         </Field>
+        {!user.email_verified && (
+          <VerifyEmailNotice email={user.email}>
+            Your email <strong>{user.email}</strong> is not verified yet. You only need this to pay in cash at the counter.
+          </VerifyEmailNotice>
+        )}
         <Field label="Mobile number for SMS updates" error={d.errors?.phone}>
           <input value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} />
         </Field>

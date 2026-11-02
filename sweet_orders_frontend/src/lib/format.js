@@ -47,6 +47,7 @@ export function slotLabel(o) {
 
 export const STATUS_LABELS = {
   pending_payment: 'Pending payment',
+  awaiting_cash: 'Pay at counter',
   paid: 'Paid',
   preparing: 'Preparing',
   ready: 'Ready for pickup',
@@ -116,6 +117,10 @@ export function mergeAllergens(...lists) {
   return [...seen.values()].sort((a, b) => a.id - b.id)
 }
 
+export function isCashOrder(order) {
+  return (order?.payments || []).some((p) => p.provider === 'cash') || order?.payment_method === 'cash'
+}
+
 export function isReadyMade(product) {
   return product?.product_type === 'ready_made'
 }
@@ -144,6 +149,6 @@ export function optionText(options = []) {
 }
 
 export function methodLabel(method) {
-  const names = { gcash: 'GCash', card: 'Card', paymaya: 'Maya', grab_pay: 'GrabPay', simulated: 'Test payment' }
+  const names = { cash: 'Cash at the counter', gcash: 'GCash', card: 'Card', paymaya: 'Maya', grab_pay: 'GrabPay', simulated: 'Test payment' }
   return method ? names[method] || method : '—'
 }

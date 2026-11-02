@@ -12,6 +12,8 @@ $config['order_rate_seconds']  = 600;
 $config['occasions']           = ['birthday', 'anniversary', 'wedding', 'graduation', 'christening', 'other'];
 $config['review_edit_days']    = 7;
 $config['reset_token_minutes'] = 30;
+$config['verify_token_hours']  = 24;
+$config['policy_version']      = '2026-11-02';
 $config['psgc_api_url']        = rtrim(getenv('PSGC_API_URL') ?: 'https://psgc.gitlab.io/api', '/');
 $config['psgc_cache_seconds']  = 30 * 86400;
 

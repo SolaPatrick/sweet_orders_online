@@ -1,12 +1,16 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS email_verifications;
 DROP TABLE IF EXISTS password_resets;
 DROP TABLE IF EXISTS reviews;
 DROP TABLE IF EXISTS order_status_history;
 DROP TABLE IF EXISTS notifications_log;
 DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS order_item_addons;
 DROP TABLE IF EXISTS order_item_options;
+DROP TABLE IF EXISTS design_uploads;
+DROP TABLE IF EXISTS addons;
 DROP TABLE IF EXISTS option_allergens;
 DROP TABLE IF EXISTS product_allergens;
 DROP TABLE IF EXISTS allergens;
@@ -48,6 +52,7 @@ CREATE TABLE users (
     last_address_street    VARCHAR(255) NULL,
     last_address_landmark  VARCHAR(255) NULL,
     allergies              VARCHAR(100) NULL,
+    email_verified_at      DATETIME     NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -180,6 +185,7 @@ CREATE TABLE orders (
     address_landmark  VARCHAR(255)  NULL,
     zone_id           INT UNSIGNED  NULL,
     contact_phone     VARCHAR(20)   NULL,
+    contact_email     VARCHAR(255)  NULL,
     recipient_name    VARCHAR(100)  NULL,
     recipient_phone   VARCHAR(20)   NULL,
     occasion          VARCHAR(40)   NULL,
@@ -189,13 +195,15 @@ CREATE TABLE orders (
     subtotal          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     delivery_fee      DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     total             DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    status            ENUM('pending_payment','paid','preparing','ready',
+    status            ENUM('pending_payment','awaiting_cash','paid','preparing','ready',
                            'out_for_delivery','completed','cancelled')
                       NOT NULL DEFAULT 'pending_payment',
     payment_status    ENUM('unpaid','paid','failed','refunded') NOT NULL DEFAULT 'unpaid',
     stock_taken       TINYINT(1)    NOT NULL DEFAULT 0,
     notes             TEXT          NULL,
     allergy_note      VARCHAR(500)  NULL,
+    policy_version    VARCHAR(20)   NULL,
+    policy_accepted_at DATETIME     NULL,
     prepared_by       INT UNSIGNED  NULL,
     prepared_at       DATETIME      NULL,
     cancel_reason     VARCHAR(255)  NULL,
@@ -231,6 +239,7 @@ CREATE TABLE order_items (
     line_total    DECIMAL(10,2) NOT NULL,
     cake_message  VARCHAR(100)  NULL,
     notes         VARCHAR(255)  NULL,
+    design_photo_url VARCHAR(500) NULL,
     PRIMARY KEY (id),
     KEY idx_order_items_order (order_id),
     KEY idx_order_items_product (product_id),
@@ -238,6 +247,29 @@ CREATE TABLE order_items (
         REFERENCES orders (id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_order_items_product FOREIGN KEY (product_id)
         REFERENCES products (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE addons (
+    id          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(60)   NOT NULL,
+    price       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    has_text    TINYINT(1)    NOT NULL DEFAULT 0,
+    is_active   TINYINT(1)    NOT NULL DEFAULT 1,
+    sort_order  INT           NOT NULL DEFAULT 0,
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_addons_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE design_uploads (
+    id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id     INT UNSIGNED NOT NULL,
+    url         VARCHAR(500) NOT NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_design_uploads_user (user_id),
+    CONSTRAINT fk_design_uploads_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE order_item_options (
@@ -256,6 +288,22 @@ CREATE TABLE order_item_options (
         REFERENCES product_options (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE order_item_addons (
+    id             INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+    order_item_id  INT UNSIGNED  NOT NULL,
+    addon_id       INT UNSIGNED  NULL,
+    addon_name     VARCHAR(60)   NOT NULL,
+    price          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    text           VARCHAR(150)  NULL,
+    PRIMARY KEY (id),
+    KEY idx_order_item_addons_item (order_item_id),
+    KEY idx_order_item_addons_addon (addon_id),
+    CONSTRAINT fk_order_item_addons_item FOREIGN KEY (order_item_id)
+        REFERENCES order_items (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_order_item_addons_addon FOREIGN KEY (addon_id)
+        REFERENCES addons (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE payments (
     id                   INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_id             INT UNSIGNED  NOT NULL,
@@ -266,6 +314,7 @@ CREATE TABLE payments (
     amount               DECIMAL(10,2) NOT NULL,
     status               ENUM('pending','paid','failed','expired') NOT NULL DEFAULT 'pending',
     paid_at              DATETIME      NULL,
+    received_by          INT UNSIGNED  NULL,
     created_at           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           DATETIME      NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -338,6 +387,20 @@ CREATE TABLE reviews (
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE email_verifications (
+    id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id     INT UNSIGNED NOT NULL,
+    token_hash  CHAR(64)     NOT NULL,
+    expires_at  DATETIME     NOT NULL,
+    used_at     DATETIME     NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_email_verifications_token (token_hash),
+    KEY idx_email_verifications_user (user_id),
+    CONSTRAINT fk_email_verifications_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE password_resets (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id     INT UNSIGNED NOT NULL,
@@ -393,6 +456,11 @@ JOIN (
     UNION ALL SELECT 'frosting', 'Cream cheese', 100.00, 3
 ) o
 WHERE p.is_customizable = 1;
+
+INSERT INTO addons (name, price, has_text, is_active, sort_order) VALUES
+('Candles',       50.00, 0, 1, 1),
+('Cake topper',  150.00, 0, 1, 2),
+('Greeting card', 40.00, 1, 1, 3);
 
 INSERT INTO allergens (id, name, slug, sort_order) VALUES
 (1, 'Milk/dairy',   'dairy',     1),

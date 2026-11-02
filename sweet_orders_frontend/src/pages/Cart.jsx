@@ -4,6 +4,7 @@ import { peso } from '../lib/format'
 import { Empty, Photo, QuantityStepper } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { AllergenLine } from '../components/Allergens'
+import LineExtras from '../components/LineExtras'
 
 export default function Cart() {
   const { items, subtotal, leadHours, setQuantity, remove } = useCart()
@@ -36,6 +37,7 @@ export default function Cart() {
                 <div className="muted small">
                   {[...i.option_labels, i.cake_message && `"${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <LineExtras addons={i.addons} photoUrl={i.design_photo_url} />
                 <AllergenLine allergens={i.allergens} mine={user?.allergies} />
                 <div className="small">
                   <Link to={`/products/${i.product_id}`}>Edit</Link> ·{' '}

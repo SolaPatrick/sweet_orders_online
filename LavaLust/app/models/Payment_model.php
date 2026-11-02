@@ -4,7 +4,7 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 class Payment_model extends Model
 {
     protected $table = 'payments';
-    protected $fillable = ['order_id', 'provider', 'checkout_session_id', 'reference', 'method', 'amount', 'status', 'paid_at'];
+    protected $fillable = ['order_id', 'provider', 'checkout_session_id', 'reference', 'method', 'amount', 'status', 'paid_at', 'received_by'];
 
     public function find_by_session(string $session_id)
     {

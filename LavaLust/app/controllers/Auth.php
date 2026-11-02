@@ -25,8 +25,56 @@ class Auth extends MY_Api_Controller
             'role'     => 'customer',
         ]);
         $user = $this->User_model->find($id);
+        $this->send_verification($user);
         $tokens = $this->api->issue_tokens(['id' => $user['id'], 'role' => $user['role']]);
         $this->api->respond(['message' => 'Account created.', 'user' => $this->User_model->public_fields($user), 'tokens' => $tokens], 201);
+    }
+
+    public function verify_email()
+    {
+        $this->api->require_method('POST');
+        $this->api->rate_limit('verify:' . $this->request->ip_address(), 20, 600);
+        $in = $this->api->body();
+        $this->validate($in, ['token|Link' => 'required|max_length[100]']);
+        $this->call->model(['Email_verification_model', 'User_model']);
+        $row = $this->Email_verification_model->find_valid((string) $in['token']);
+        if (!$row) {
+            $this->api->respond_error('This link is invalid, already used or expired. Log in and send a new one from your profile.', 400);
+        }
+        $this->db->transaction();
+        $this->Email_verification_model->mark_used((int) $row['id']);
+        $this->db->table('users')->where('id', (int) $row['user_id'])->where_null('email_verified_at')->update(['email_verified_at' => date('Y-m-d H:i:s')]);
+        $this->db->commit();
+        $this->api->respond(['message' => 'Your email is verified. You can now pay at the counter for pickup orders.', 'user' => $this->User_model->public_fields($this->User_model->find((int) $row['user_id']))]);
+    }
+
+    public function resend_verification()
+    {
+        $this->api->require_method('POST');
+        $user = $this->user();
+        $this->api->rate_limit('verify-resend:' . $user['id'], 3, 900);
+        if (!empty($user['email_verified_at'])) {
+            $this->api->respond(['message' => 'Your email is already verified.']);
+        }
+        $this->send_verification($user);
+        $hours = (int) config_item('verify_token_hours');
+        $this->api->respond(['message' => "We sent a new link to {$user['email']}. It works for {$hours} hours."]);
+    }
+
+    private function send_verification(array $user): void
+    {
+        try {
+            $hours = (int) config_item('verify_token_hours');
+            $this->call->model('Email_verification_model');
+            $token = $this->Email_verification_model->issue((int) $user['id'], $hours);
+            $body = "Hi {$user['name']},\n\nPlease confirm your email for Sweet Orders Online by opening this link:\n\n%s\n\n"
+                  . "You need this only to pay in cash at the counter for pickup orders. The link works once and expires in {$hours} hours.\n\nClayanna's Café · Sweet Orders Online";
+            $this->call->library('notifier');
+            $this->notifier->email($user['email'], 'Confirm your email for Sweet Orders', sprintf($body, $this->frontend_url('/verify-email?token=' . $token)), 'verify_email', null, (int) $user['id'],
+                sprintf($body, $this->frontend_url('/verify-email?token=[hidden]')));
+        } catch (Throwable $e) {
+            $this->logger->log('error', 'Notification', 'Verification email failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        }
     }
 
     public function login()

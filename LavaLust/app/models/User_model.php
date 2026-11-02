@@ -6,7 +6,7 @@ class User_model extends Model
     protected $table = 'users';
     protected $fillable = [
         'name', 'email', 'phone', 'password', 'role', 'is_active',
-        'last_zone_id', 'last_address_street', 'last_address_landmark', 'allergies',
+        'last_zone_id', 'last_address_street', 'last_address_landmark', 'allergies', 'email_verified_at',
     ];
 
     public function find_by_email(string $email)
@@ -27,6 +27,7 @@ class User_model extends Model
         unset($user['password']);
         $user['id'] = (int) $user['id'];
         $user['is_active'] = (int) $user['is_active'];
+        $user['email_verified'] = !empty($user['email_verified_at']);
         $user['allergies'] = array_values(array_filter(array_map('intval', explode(',', (string) ($user['allergies'] ?? '')))));
         if (array_key_exists('last_zone_id', $user)) {
             $user['last_zone_id'] = $user['last_zone_id'] !== null ? (int) $user['last_zone_id'] : null;

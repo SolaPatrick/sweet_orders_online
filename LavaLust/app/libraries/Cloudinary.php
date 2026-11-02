@@ -20,10 +20,10 @@ class Cloudinary
         return $this->config() !== null;
     }
 
-    public function upload(string $path): string
+    public function upload(string $path, string $folder = self::FOLDER): string
     {
         [$cloud, $key, $secret] = $this->config();
-        $params = ['folder' => self::FOLDER, 'timestamp' => (string) time()];
+        $params = ['folder' => $folder, 'timestamp' => (string) time()];
         $result = $this->post($cloud . '/image/upload', $params + [
             'file'      => new CURLFile($path),
             'api_key'   => $key,

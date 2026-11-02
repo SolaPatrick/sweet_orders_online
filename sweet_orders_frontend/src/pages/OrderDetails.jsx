@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { dateTime, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
+import { dateTime, isCashOrder, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
 import { ConfirmDialog, ErrorBox, Loader, Notice, StatusBadge, useApi } from '../components/ui'
 import OrderHistory from '../components/OrderHistory'
 import { AllergenLine } from '../components/Allergens'
+import LineExtras from '../components/LineExtras'
 import RateOrder from '../components/RateOrder'
 import NotFound from './NotFound'
 
 function steps(order) {
   const last = order.fulfillment === 'pickup' ? ['ready', 'Ready for pickup'] : ['out_for_delivery', 'Out for delivery']
+  if (isCashOrder(order)) {
+    return [['awaiting_cash', 'Order placed'], ['preparing', 'Preparing'], last, ['completed', 'Paid and picked up']]
+  }
   return [
     ['pending_payment', 'Order placed'],
     ['paid', 'Paid'],
@@ -32,9 +36,11 @@ export default function OrderDetails() {
   if (error) return <div className="container page"><ErrorBox error={error} onRetry={reload} /></div>
   const order = data.data
   const flow = steps(order)
-  const reached = order.status === 'cancelled' ? -1 : flow.findIndex(([s]) => s === order.status)
+  const reached = order.status === 'cancelled' ? -1 : isCashOrder(order) && order.status === 'paid' ? 0 : flow.findIndex(([s]) => s === order.status)
   const payment = order.payments.find((p) => p.status === 'paid') || order.payments[0]
   const canPay = order.status === 'pending_payment' && order.payment_status !== 'paid'
+  const cashDue = isCashOrder(order) && order.payment_status !== 'paid' && order.status !== 'cancelled'
+  const canCancel = canPay || (order.status === 'awaiting_cash' && order.payment_status !== 'paid')
 
   const pay = async () => {
     setBusy(true)
@@ -83,7 +89,7 @@ export default function OrderDetails() {
               Pay now
             </button>
           )}
-          {canPay && (
+          {canCancel && (
             <button type="button" className="btn" onClick={() => setConfirm(true)} disabled={busy}>
               Cancel order
             </button>
@@ -93,6 +99,11 @@ export default function OrderDetails() {
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={actionError} />
       {canPay && <div className="alert alert-warning">This order is unpaid. Your slot is held until {timeOnly(order.hold_expires_at)}.</div>}
+      {cashDue && (
+        <div className="alert alert-warning">
+          Pay {peso(order.total)} in cash at the counter when you pick it up{order.claim_code ? ` and show your claim code ${order.claim_code}` : ''}.
+        </div>
+      )}
 
       {order.fulfillment === 'pickup' && order.claim_code && !['cancelled', 'completed'].includes(order.status) && (
         <div className="card claim">
@@ -142,6 +153,7 @@ export default function OrderDetails() {
                 <div className="muted small">
                   {[optionText(i.options), i.cake_message && `Message: "${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <LineExtras addons={i.addons} photoUrl={i.design_photo_url} />
                 <AllergenLine allergens={i.allergens} />
               </div>
               <strong>{peso(i.line_total)}</strong>
@@ -206,6 +218,7 @@ export default function OrderDetails() {
             </p>
             {order.notes && <p className="muted">Notes: {order.notes}</p>}
             {order.allergy_note && <p className="allergy-warn">Allergy note: {order.allergy_note}</p>}
+            {order.contact_email && <p className="muted small">Order updates are sent to {order.contact_email}.</p>}
           </section>
         </div>
       </div>
