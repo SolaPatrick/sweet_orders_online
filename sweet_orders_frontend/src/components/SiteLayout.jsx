@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
+import { Preloader, Stripes } from './Motion'
 
 function AccountMenu() {
   const { user, isStaff, logout } = useAuth()
@@ -58,10 +59,12 @@ export default function SiteLayout() {
 
   return (
     <div className="site">
+      <Preloader />
       <header className="site-header">
         <div className="container header-inner">
           <Link to="/" className="brand">
-            Clayanna's Café
+            <strong>Clayanna's</strong>
+            <span>Café</span>
           </Link>
           <button type="button" className="nav-toggle" aria-label="Menu" onClick={() => setNavOpen((o) => !o)}>
             ☰
@@ -87,9 +90,18 @@ export default function SiteLayout() {
         </div>
       </header>
       <main className="site-main">
-        <Outlet />
+        <div key={location.pathname} className="route-fade">
+          <Outlet />
+        </div>
       </main>
       <footer className="site-footer">
+        <Stripes className="footer-stripes" />
+        <div className="container footer-top">
+          <p className="footer-word">Clayanna's</p>
+          <Link to="/menu" className="btn btn-light btn-lg">
+            Order now
+          </Link>
+        </div>
         <div className="container footer-inner">
           <span>© {new Date().getFullYear()} Clayanna's Café · Sweet Orders Online</span>
           <nav>
