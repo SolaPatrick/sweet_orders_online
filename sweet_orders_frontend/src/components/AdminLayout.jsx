@@ -3,30 +3,33 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const LINKS = [
-  ['/admin', 'Dashboard', true],
-  ['/admin/orders', 'Orders'],
-  ['/admin/products', 'Products'],
-  ['/admin/categories', 'Categories'],
-  ['/admin/slots', 'Time slots'],
-  ['/admin/payments', 'Payments'],
-  ['/admin/notifications', 'Notification log'],
+  ['/admin', 'Dashboard', true, false],
+  ['/admin/orders', 'Orders', false, false],
+  ['/admin/products', 'Products', false, true],
+  ['/admin/categories', 'Categories', false, true],
+  ['/admin/slots', 'Time slots', false, true],
+  ['/admin/delivery-zones', 'Delivery areas', false, true],
+  ['/admin/payments', 'Payments', false, true],
+  ['/admin/reviews', 'Reviews', false, true],
+  ['/admin/users', 'Users', false, true],
+  ['/admin/notifications', 'Notification log', false, true],
 ]
 
 export default function AdminLayout() {
-  const { logout } = useAuth()
+  const { logout, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   return (
     <div className="admin">
       <aside className={`admin-sidebar ${open ? 'open' : ''}`}>
         <div className="admin-brand">
-          Clayanna's Admin
+          {isAdmin ? "Clayanna's Admin" : "Clayanna's Staff"}
           <button type="button" className="nav-toggle light" aria-label="Menu" onClick={() => setOpen((o) => !o)}>
             ☰
           </button>
         </div>
         <nav onClick={() => setOpen(false)}>
-          {LINKS.map(([to, text, end]) => (
+          {LINKS.filter(([, , , adminOnly]) => isAdmin || !adminOnly).map(([to, text, end]) => (
             <NavLink key={to} to={to} end={end}>
               {text}
             </NavLink>

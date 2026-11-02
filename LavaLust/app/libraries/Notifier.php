@@ -9,10 +9,11 @@ class Notifier
         'order_placed'      => ['Order {number} received', "Hi {name}, we received your order {number} for {schedule}. Total: {total}. Please complete payment to confirm it."],
         'payment_confirmed' => ['Payment received for {number}', "Hi {name}, we received your payment of {total} for order {number}. We will start preparing it for {schedule}."],
         'preparing'         => ['Order {number} is being prepared', "Hi {name}, your order {number} is now being prepared."],
-        'ready'             => ['Order {number} is ready for pickup', "Hi {name}, your order {number} is ready for pickup at Clayanna's Café ({schedule})."],
+        'ready'             => ['Order {number} is ready for pickup', "Hi {name}, your order {number} is ready for pickup at Clayanna's Café ({schedule}).{pickup}"],
         'out_for_delivery'  => ['Order {number} is on the way', "Hi {name}, your order {number} is out for delivery and will arrive {schedule}."],
-        'completed'         => ['Order {number} completed', "Hi {name}, your order {number} is complete. Thank you for ordering from Clayanna's Café!"],
+        'completed'         => ['Order {number} completed', "Hi {name}, your order {number} is complete. Thank you for ordering from Clayanna's Café! Tell us how it was: {review_url}"],
         'cancelled'         => ['Order {number} cancelled', "Hi {name}, your order {number} has been cancelled. Contact us if you have questions."],
+        'refunded'          => ['Refund for order {number}', "Hi {name}, we refunded {refund} for your cancelled order {number}. Reference: {refund_reference}. It may take a few days to show in your account."],
     ];
 
     public function __construct()
@@ -32,6 +33,10 @@ class Notifier
             '{total}'    => 'PHP ' . number_format((float) $order['total'], 2),
             '{schedule}' => ucfirst($order['fulfillment']) . ' on ' . date('D M j', strtotime($order['slot_date']))
                             . ', ' . date('g:i A', strtotime($order['start_time'])),
+            '{pickup}'   => $this->pickup_text($order),
+            '{review_url}'       => config_item('frontend_url') . '/orders/' . $order['id'],
+            '{refund}'           => 'PHP ' . number_format((float) ($order['refund_amount'] ?? 0), 2),
+            '{refund_reference}' => $order['refund_reference'] ?? '-',
         ];
         $subject = strtr($subject, $vars);
         $message = strtr($message, $vars);
@@ -45,16 +50,29 @@ class Notifier
         }
     }
 
-    public function email(string $to, string $subject, string $body, string $event, $order_id = null, $user_id = null): array
+    private function pickup_text(array $order): string
     {
+        if (($order['fulfillment'] ?? '') !== 'pickup' || empty($order['claim_code'])) {
+            return '';
+        }
+        $text = " Claim code: {$order['claim_code']}.";
+        if (!empty($order['pickup_name']) && $order['pickup_name'] !== ($order['customer_name'] ?? null)) {
+            $text .= " Pickup by: {$order['pickup_name']}.";
+        }
+        return $text;
+    }
+
+    public function email(string $to, string $subject, string $body, string $event, $order_id = null, $user_id = null, ?string $log_body = null): array
+    {
+        $logged = $log_body ?? $body;
         if (!config_item('smtp_host')) {
-            return $this->log('email', $event, $to, $subject, $body, 'logged', null, $order_id, $user_id);
+            return $this->log('email', $event, $to, $subject, $logged, 'logged', null, $order_id, $user_id);
         }
         try {
             $this->smtp_send($to, $subject, $body);
-            return $this->log('email', $event, $to, $subject, $body, 'sent', null, $order_id, $user_id);
+            return $this->log('email', $event, $to, $subject, $logged, 'sent', null, $order_id, $user_id);
         } catch (Throwable $e) {
-            return $this->log('email', $event, $to, $subject, $body, 'failed', $e->getMessage(), $order_id, $user_id);
+            return $this->log('email', $event, $to, $subject, $logged, 'failed', $e->getMessage(), $order_id, $user_id);
         }
     }
 

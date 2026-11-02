@@ -44,4 +44,5 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 $config['middlewares'] = [
     'auth'  => load_class('AuthMiddleware', 'middlewares'),
     'admin' => load_class('AdminMiddleware', 'middlewares'),
+    'staff' => load_class('StaffMiddleware', 'middlewares'),
 ];

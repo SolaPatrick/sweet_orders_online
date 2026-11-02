@@ -7,32 +7,72 @@ class Orders extends MY_Api_Controller
     {
         $this->api->require_method('POST');
         $user = $this->user();
+        $this->api->rate_limit('order:' . $user['id'], config_item('order_rate_requests'), config_item('order_rate_seconds'));
         $in = $this->api->body();
         $this->validate($in, [
-            'fulfillment|Fulfillment'     => 'required|in_list["pickup,delivery"]',
-            'slot_id|Time slot'           => 'required|pattern[int]',
-            'contact_phone|Mobile number' => ['required', self::MOBILE_PATTERN],
-            'notes|Notes'                 => 'max_length[1000]',
-            'items|Cart'                  => 'required|pattern[array]',
+            'fulfillment|Fulfillment'         => 'required|in_list["pickup,delivery"]',
+            'slot_id|Time slot'               => 'required|pattern[int]',
+            'contact_phone|Mobile number'     => ['required', self::MOBILE_PATTERN],
+            'notes|Notes'                     => 'max_length[1000]',
+            'items|Cart'                      => 'required|pattern[array]',
+            'recipient_name|Recipient name'   => 'max_length[100]',
+            'recipient_phone|Recipient mobile' => ['', self::MOBILE_PATTERN],
+            'occasion|Occasion'               => 'in_list["' . implode(',', config_item('occasions')) . '"]',
+            'pickup_name|Pickup name'         => 'max_length[100]',
+            'pickup_phone|Pickup mobile'      => ['', self::MOBILE_PATTERN],
         ]);
-        if ($in['fulfillment'] === 'delivery') {
-            $this->validate($in, ['delivery_address|Delivery address' => 'required|min_length[10]|max_length[500]']);
-        }
         if (count($in['items']) > 30) {
             $this->api->respond_error('Your cart has too many lines.', 422);
         }
 
-        $this->call->model(['Product_model', 'Slot_model', 'Order_model']);
+        $this->call->model(['Product_model', 'Slot_model', 'Order_model', 'Zone_model']);
+        $zone = null;
+        $delivery_fee = 0.0;
+        $address = [];
+        if ($in['fulfillment'] === 'delivery') {
+            if ($this->Zone_model->count_all() > 0) {
+                $this->validate($in, [
+                    'zone_id|Delivery area'       => 'required|pattern[int]',
+                    'address_street|Street'       => 'required|min_length[5]|max_length[255]',
+                    'address_landmark|Landmark'   => 'max_length[255]',
+                ]);
+                $zone = $this->Zone_model->find((int) $in['zone_id']);
+                if (!$zone || !(int) $zone['is_active']) {
+                    $this->fail_validation(['zone_id' => "We don't deliver to this area yet."], "We don't deliver to this area yet.");
+                }
+                $landmark = trim((string) ($in['address_landmark'] ?? ''));
+                $address = [
+                    'address_street'   => $in['address_street'],
+                    'address_barangay' => $zone['name'],
+                    'address_city'     => $zone['city'],
+                    'address_landmark' => $landmark !== '' ? $landmark : null,
+                    'zone_id'          => (int) $zone['id'],
+                ];
+                $address['delivery_address'] = implode(', ', [$in['address_street'], $zone['name'], $zone['city']])
+                    . ($landmark !== '' ? " (Landmark: {$landmark})" : '');
+                $delivery_fee = round((float) $zone['fee'], 2);
+            } else {
+                $this->validate($in, ['delivery_address|Delivery address' => 'required|min_length[10]|max_length[500]']);
+                $address = ['delivery_address' => $in['delivery_address']];
+                $delivery_fee = config_item('delivery_fee');
+            }
+        }
+
         $this->Slot_model->release_expired_holds();
+        $limit = (int) config_item('max_unpaid_orders');
+        if ($this->Order_model->count_unpaid_for_user((int) $user['id']) >= $limit) {
+            $this->api->respond_error("You already have {$limit} unpaid orders. Please pay for or cancel one of them in My orders before placing a new order.", 409);
+        }
 
         $lines = [];
         $errors = [];
         $subtotal = 0.0;
         $lead_hours = 0;
+        $wanted = [];
         foreach (array_values($in['items']) as $i => $item) {
             $qty = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
             $product = isset($item['product_id']) ? $this->Product_model->detail((int) $item['product_id']) : null;
-            if (!$product) {
+            if (!$product || $product['is_archived']) {
                 $errors["items.{$i}"] = 'This product no longer exists.';
                 continue;
             }
@@ -72,6 +112,11 @@ class Orders extends MY_Api_Controller
             $line_total = round($unit * $qty, 2);
             $subtotal += $line_total;
             $lead_hours = max($lead_hours, $product['lead_time_hours']);
+            $wanted[$product['id']] = [
+                'product' => $product,
+                'index'   => $wanted[$product['id']]['index'] ?? $i,
+                'qty'     => ($wanted[$product['id']]['qty'] ?? 0) + $qty,
+            ];
             $lines[] = [
                 'product_id'   => $product['id'],
                 'product_name' => $product['name'],
@@ -95,8 +140,33 @@ class Orders extends MY_Api_Controller
             $this->fail_validation(['slot_id' => "This slot is too soon. Your cart needs {$lead_hours} hours of preparation."]);
         }
 
-        $delivery_fee = $in['fulfillment'] === 'delivery' ? config_item('delivery_fee') : 0.0;
+        $day = date('D, M j', strtotime($slot['slot_date']));
+        foreach ($wanted as $product_id => $w) {
+            $p = $w['product'];
+            if ($p['sold_out_date'] === $slot['slot_date']) {
+                $errors["items.{$w['index']}"] = "{$p['name']} is sold out for {$day}.";
+                continue;
+            }
+            if ($p['daily_limit'] !== null) {
+                $left = max(0, $p['daily_limit'] - $this->Product_model->sold_on((int) $product_id, $slot['slot_date']));
+                if ($w['qty'] > $left) {
+                    $errors["items.{$w['index']}"] = $left > 0
+                        ? "Only {$left} {$p['name']} left for {$day}."
+                        : "{$p['name']} is sold out for {$day}.";
+                }
+            }
+        }
+        if ($errors) {
+            $this->fail_validation($errors, 'Some items in your cart need attention.');
+        }
+
         $subtotal = round($subtotal, 2);
+        $is_pickup = $in['fulfillment'] === 'pickup';
+        $contact_phone = normalize_phone($in['contact_phone']);
+        $text = function ($key) use ($in) {
+            $value = trim((string) ($in[$key] ?? ''));
+            return $value !== '' ? $value : null;
+        };
 
         $this->db->transaction();
         if (!$this->Slot_model->book_one((int) $slot['id'])) {
@@ -104,20 +174,36 @@ class Orders extends MY_Api_Controller
             $this->response->send_json_error('That time slot just filled up or was closed. Please pick another one.', 409, ['errors' => ['slot_id' => 'This slot is full or closed.']]);
             exit;
         }
-        $order_id = $this->Order_model->create_with_items([
+        $order_id = $this->Order_model->create_with_items(array_merge([
             'user_id'          => $user['id'],
             'slot_id'          => $slot['id'],
             'fulfillment'      => $in['fulfillment'],
-            'delivery_address' => $in['fulfillment'] === 'delivery' ? $in['delivery_address'] : null,
-            'contact_phone'    => normalize_phone($in['contact_phone']),
+            'delivery_address' => null,
+            'contact_phone'    => $contact_phone,
+            'recipient_name'   => $text('recipient_name'),
+            'recipient_phone'  => $text('recipient_phone') ? normalize_phone($in['recipient_phone']) : null,
+            'occasion'         => $text('occasion'),
+            'pickup_name'      => $is_pickup ? ($text('pickup_name') ?? $user['name']) : null,
+            'pickup_phone'     => $is_pickup ? ($text('pickup_phone') ? normalize_phone($in['pickup_phone']) : $contact_phone) : null,
+            'claim_code'       => $is_pickup ? sprintf('%04d', random_int(0, 9999)) : null,
             'subtotal'         => $subtotal,
             'delivery_fee'     => $delivery_fee,
             'total'            => round($subtotal + $delivery_fee, 2),
             'status'           => 'pending_payment',
             'payment_status'   => 'unpaid',
             'notes'            => !empty($in['notes']) ? $in['notes'] : null,
-        ], $lines);
+        ], $address), $lines);
+        $this->Order_model->add_history($order_id, null, 'pending_payment', $user['id'], 'Order placed');
         $this->db->commit();
+
+        if ($zone) {
+            $this->call->model('User_model');
+            $this->User_model->update($user['id'], [
+                'last_zone_id'          => $address['zone_id'],
+                'last_address_street'   => $address['address_street'],
+                'last_address_landmark' => $address['address_landmark'],
+            ]);
+        }
 
         $this->notify_order($order_id, 'order_placed');
         $payment = $this->start_payment($order_id, $in['payment_method'] ?? null);
@@ -178,7 +264,7 @@ class Orders extends MY_Api_Controller
         }
         $this->call->model(['Slot_model', 'Payment_model']);
         $this->db->transaction();
-        $this->Order_model->set_status((int) $id, 'cancelled');
+        $this->Order_model->change_status($order, 'cancelled', $this->user()['id'], 'Cancelled by the customer');
         $this->Slot_model->release_one((int) $order['slot_id']);
         $this->Payment_model->expire_pending((int) $id);
         $this->db->commit();

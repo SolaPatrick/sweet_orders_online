@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { dateTime, optionText, peso, slotLabel, timeOnly, methodLabel } from '../lib/format'
+import { dateTime, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
 import { ConfirmDialog, ErrorBox, Loader, Notice, StatusBadge, useApi } from '../components/ui'
+import OrderHistory from '../components/OrderHistory'
+import RateOrder from '../components/RateOrder'
 import NotFound from './NotFound'
 
 function steps(order) {
@@ -91,9 +93,30 @@ export default function OrderDetails() {
       <ErrorBox error={actionError} />
       {canPay && <div className="alert alert-warning">This order is unpaid. Your slot is held until {timeOnly(order.hold_expires_at)}.</div>}
 
+      {order.fulfillment === 'pickup' && order.claim_code && !['cancelled', 'completed'].includes(order.status) && (
+        <div className="card claim">
+          <div>
+            <span className="muted small">Claim code</span>
+            <strong className="claim-code">{order.claim_code}</strong>
+          </div>
+          <p className="muted small">
+            Show this code at the counter.
+            {order.pickup_name && order.pickup_name !== order.customer_name ? ` Share it with ${order.pickup_name}, who will pick up the order.` : ''}
+          </p>
+        </div>
+      )}
+
       {order.status === 'cancelled' ? (
-        <div className="card center">
-          <StatusBadge status="cancelled" /> This order was cancelled.
+        <div className="card center stack">
+          <div>
+            <StatusBadge status="cancelled" /> This order was cancelled.
+          </div>
+          {order.cancel_reason && <p className="muted">Reason: {order.cancel_reason}</p>}
+          {order.payment_status === 'refunded' && (
+            <p>
+              We refunded {pesoExact(order.refund_amount)} on {dateTime(order.refunded_at)}. Reference: <span className="mono">{order.refund_reference}</span>
+            </p>
+          )}
         </div>
       ) : (
         <ol className="card timeline">
@@ -140,7 +163,25 @@ export default function OrderDetails() {
             <h3>{order.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</h3>
             <p>{slotLabel(order)}</p>
             <p className="muted">{order.fulfillment === 'pickup' ? "Clayanna's Café, 123 Mabini St." : order.delivery_address}</p>
+            {order.fulfillment === 'pickup' && order.pickup_name && (
+              <p className="small">
+                Picked up by: {order.pickup_name}
+                {order.pickup_phone ? ` · ${order.pickup_phone}` : ''}
+              </p>
+            )}
           </section>
+          {(order.recipient_name || order.occasion) && (
+            <section className="card">
+              <h3>For</h3>
+              {order.recipient_name && (
+                <p>
+                  {order.recipient_name}
+                  {order.recipient_phone ? ` · ${order.recipient_phone}` : ''}
+                </p>
+              )}
+              {order.occasion && <p className="muted">Occasion: {occasionLabel(order.occasion)}</p>}
+            </section>
+          )}
           <section className="card">
             <h3>Payment</h3>
             <div className="kv">
@@ -149,7 +190,7 @@ export default function OrderDetails() {
             </div>
             <div className="kv">
               <span>Status</span>
-              <StatusBadge status={order.payment_status} map={{ unpaid: 'Unpaid', paid: 'Paid', failed: 'Failed', refunded: 'Refunded' }} />
+              <StatusBadge status={order.payment_status} map={PAYMENT_LABELS} />
             </div>
             <div className="kv">
               <span>Reference</span>
@@ -165,6 +206,13 @@ export default function OrderDetails() {
           </section>
         </div>
       </div>
+
+      {order.status === 'completed' && <RateOrder order={order} onSaved={reload} />}
+
+      <section className="card">
+        <h3>Order history</h3>
+        <OrderHistory history={order.history} />
+      </section>
 
       <ConfirmDialog
         open={confirm}

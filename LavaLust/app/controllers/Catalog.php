@@ -36,7 +36,7 @@ class Catalog extends MY_Api_Controller
         $this->api->require_method('GET');
         $this->call->model('Product_model');
         $product = $this->Product_model->detail((int) $id);
-        if (!$product) {
+        if (!$product || $product['is_archived']) {
             $this->api->respond_error('Product not found.', 404);
         }
         $this->api->respond(['data' => $product]);

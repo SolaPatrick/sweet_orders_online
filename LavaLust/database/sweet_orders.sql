@@ -1,6 +1,9 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS password_resets;
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS order_status_history;
 DROP TABLE IF EXISTS notifications_log;
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS order_item_options;
@@ -12,8 +15,23 @@ DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS refresh_tokens;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS delivery_zones;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE delivery_zones (
+    id          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(100)  NOT NULL,
+    city        VARCHAR(100)  NOT NULL,
+    psgc_code   VARCHAR(20)   NULL,
+    fee         DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    is_active   TINYINT(1)    NOT NULL DEFAULT 1,
+    sort_order  INT           NOT NULL DEFAULT 0,
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_delivery_zones_name_city (name, city),
+    KEY idx_delivery_zones_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE users (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -21,13 +39,19 @@ CREATE TABLE users (
     email       VARCHAR(255) NOT NULL,
     phone       VARCHAR(20)  NULL,
     password    VARCHAR(255) NOT NULL,
-    role        ENUM('customer','admin') NOT NULL DEFAULT 'customer',
+    role        ENUM('customer','staff','admin') NOT NULL DEFAULT 'customer',
     is_active   TINYINT(1)   NOT NULL DEFAULT 1,
+    last_zone_id           INT UNSIGNED NULL,
+    last_address_street    VARCHAR(255) NULL,
+    last_address_landmark  VARCHAR(255) NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email),
-    KEY idx_users_role (role)
+    KEY idx_users_role (role),
+    KEY idx_users_last_zone (last_zone_id),
+    CONSTRAINT fk_users_last_zone FOREIGN KEY (last_zone_id)
+        REFERENCES delivery_zones (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE refresh_tokens (
@@ -64,11 +88,15 @@ CREATE TABLE products (
     is_customizable  TINYINT(1)    NOT NULL DEFAULT 0,
     is_available     TINYINT(1)    NOT NULL DEFAULT 1,
     is_featured      TINYINT(1)    NOT NULL DEFAULT 0,
+    daily_limit      INT           NULL,
+    sold_out_date    DATE          NULL,
+    is_archived      TINYINT(1)    NOT NULL DEFAULT 0,
     created_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME      NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_products_slug (slug),
     KEY idx_products_category (category_id),
+    KEY idx_products_archived (is_archived),
     CONSTRAINT fk_products_category FOREIGN KEY (category_id)
         REFERENCES categories (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -108,7 +136,18 @@ CREATE TABLE orders (
     slot_id           INT UNSIGNED  NOT NULL,
     fulfillment       ENUM('pickup','delivery') NOT NULL,
     delivery_address  TEXT          NULL,
+    address_street    VARCHAR(255)  NULL,
+    address_barangay  VARCHAR(100)  NULL,
+    address_city      VARCHAR(100)  NULL,
+    address_landmark  VARCHAR(255)  NULL,
+    zone_id           INT UNSIGNED  NULL,
     contact_phone     VARCHAR(20)   NULL,
+    recipient_name    VARCHAR(100)  NULL,
+    recipient_phone   VARCHAR(20)   NULL,
+    occasion          VARCHAR(40)   NULL,
+    pickup_name       VARCHAR(100)  NULL,
+    pickup_phone      VARCHAR(20)   NULL,
+    claim_code        CHAR(4)       NULL,
     subtotal          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     delivery_fee      DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     total             DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -117,6 +156,12 @@ CREATE TABLE orders (
                       NOT NULL DEFAULT 'pending_payment',
     payment_status    ENUM('unpaid','paid','failed','refunded') NOT NULL DEFAULT 'unpaid',
     notes             TEXT          NULL,
+    prepared_by       INT UNSIGNED  NULL,
+    prepared_at       DATETIME      NULL,
+    cancel_reason     VARCHAR(255)  NULL,
+    refund_amount     DECIMAL(10,2) NULL,
+    refund_reference  VARCHAR(100)  NULL,
+    refunded_at       DATETIME      NULL,
     created_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME      NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -124,10 +169,16 @@ CREATE TABLE orders (
     KEY idx_orders_user (user_id),
     KEY idx_orders_slot (slot_id),
     KEY idx_orders_status (status),
+    KEY idx_orders_zone (zone_id),
+    KEY idx_orders_prepared_by (prepared_by),
     CONSTRAINT fk_orders_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_orders_slot FOREIGN KEY (slot_id)
-        REFERENCES delivery_slots (id) ON DELETE RESTRICT ON UPDATE CASCADE
+        REFERENCES delivery_slots (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_orders_zone FOREIGN KEY (zone_id)
+        REFERENCES delivery_zones (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_orders_prepared_by FOREIGN KEY (prepared_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE order_items (
@@ -204,6 +255,69 @@ CREATE TABLE notifications_log (
     CONSTRAINT fk_notifications_log_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE order_status_history (
+    id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_id     INT UNSIGNED NOT NULL,
+    from_status  ENUM('pending_payment','paid','preparing','ready',
+                      'out_for_delivery','completed','cancelled') NULL,
+    to_status    ENUM('pending_payment','paid','preparing','ready',
+                      'out_for_delivery','completed','cancelled') NOT NULL,
+    changed_by   INT UNSIGNED NULL,
+    note         VARCHAR(255) NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_order_status_history_order (order_id),
+    KEY idx_order_status_history_changed_by (changed_by),
+    CONSTRAINT fk_order_status_history_order FOREIGN KEY (order_id)
+        REFERENCES orders (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_order_status_history_changed_by FOREIGN KEY (changed_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE reviews (
+    id          INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+    product_id  INT UNSIGNED     NOT NULL,
+    order_id    INT UNSIGNED     NOT NULL,
+    user_id     INT UNSIGNED     NOT NULL,
+    rating      TINYINT UNSIGNED NOT NULL,
+    comment     VARCHAR(1000)    NULL,
+    is_visible  TINYINT(1)       NOT NULL DEFAULT 1,
+    created_at  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME         NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_reviews_order_product (order_id, product_id),
+    KEY idx_reviews_product (product_id),
+    KEY idx_reviews_user (user_id),
+    CONSTRAINT chk_reviews_rating CHECK (rating BETWEEN 1 AND 5),
+    CONSTRAINT fk_reviews_product FOREIGN KEY (product_id)
+        REFERENCES products (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_reviews_order FOREIGN KEY (order_id)
+        REFERENCES orders (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_reviews_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE password_resets (
+    id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id     INT UNSIGNED NOT NULL,
+    token_hash  CHAR(64)     NOT NULL,
+    expires_at  DATETIME     NOT NULL,
+    used_at     DATETIME     NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_password_resets_token (token_hash),
+    KEY idx_password_resets_user (user_id),
+    CONSTRAINT fk_password_resets_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO delivery_zones (name, city, fee, is_active, sort_order) VALUES
+('Poblacion',     'Sample City',  60.00, 1, 1),
+('San Isidro',    'Sample City',  80.00, 1, 2),
+('San Roque',     'Sample City', 100.00, 1, 3),
+('Santa Cruz',    'Sample City', 120.00, 1, 4),
+('Bagong Silang', 'Sample City', 150.00, 0, 5);
 
 INSERT INTO categories (id, name, slug, sort_order) VALUES
 (1, 'Custom cakes', 'custom-cakes', 1),

@@ -168,18 +168,42 @@ class MY_Api_Controller extends Controller
             'paid_at'   => $info['paid_at'] ?? date('Y-m-d H:i:s'),
         ]);
         $order = $this->db->raw('SELECT id, status, slot_id FROM orders WHERE id = ? FOR UPDATE', [$payment['order_id']])->fetch();
+        $this->call->model('Order_model');
+        $note = null;
+        $slot_lost = false;
         if ($order['status'] === 'cancelled') {
             $this->call->model('Slot_model');
-            $this->Slot_model->book_one((int) $order['slot_id']);
+            $slot_lost = !$this->Slot_model->book_one((int) $order['slot_id']);
+            $note = $slot_lost ? Order_model::LATE_PAYMENT_NOTE : 'Paid after hold expired; slot booked again';
         }
+        $revive = in_array($order['status'], ['pending_payment', 'cancelled'], true);
         $this->db->table('orders')->where('id', $order['id'])->update(
-            in_array($order['status'], ['pending_payment', 'cancelled'], true)
-                ? ['status' => 'paid', 'payment_status' => 'paid']
-                : ['payment_status' => 'paid']
+            $revive ? ['status' => 'paid', 'payment_status' => 'paid'] : ['payment_status' => 'paid']
         );
+        if ($revive) {
+            $this->Order_model->add_history((int) $order['id'], $order['status'], 'paid', null, $note);
+        }
         $this->db->commit();
         $this->notify_order((int) $order['id'], 'payment_confirmed');
+        if ($slot_lost) {
+            $this->alert_cafe_slot_full((int) $order['id']);
+        }
         return true;
+    }
+
+    private function alert_cafe_slot_full(int $order_id): void
+    {
+        try {
+            $this->call->library('notifier');
+            $order = $this->Order_model->detail($order_id);
+            $when = date('D M j', strtotime($order['slot_date'])) . ', ' . date('g:i A', strtotime($order['start_time']));
+            $body = "Order {$order['order_number']} was paid after its payment hold expired, but its {$order['fulfillment']} slot ({$when}) is now full or closed.\n\n"
+                  . "The payment was recorded and the order is marked Paid. Please contact {$order['customer_name']} ({$order['contact_phone']}, {$order['customer_email']}) to agree on a new time slot.\n\n"
+                  . 'Open the order: ' . $this->frontend_url('/admin/orders/' . $order_id);
+            $this->notifier->email(config_item('cafe_email'), "Action needed: order {$order['order_number']} needs a new slot", $body, 'slot_conflict', $order_id, null);
+        } catch (Throwable $e) {
+            $this->logger->log('error', 'Notification', 'Cafe alert failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        }
     }
 
     protected function frontend_url(string $path = ''): string

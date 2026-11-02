@@ -23,23 +23,27 @@ class Payment_model extends Model
 
     public function paid_total(string $from, ?string $to = null): float
     {
-        $this->db->table($this->table)->select_sum('amount', 'total')
-            ->where('status', 'paid')
-            ->where('paid_at', '>=', $from . ' 00:00:00');
+        $this->db->table('payments p')->select_sum('p.amount', 'total')
+            ->inner_join('orders o', 'o.id = p.order_id')
+            ->where('p.status', 'paid')
+            ->where('o.payment_status', '<>', 'refunded')
+            ->where('p.paid_at', '>=', $from . ' 00:00:00');
         if ($to !== null) {
-            $this->db->where('paid_at', '<', date('Y-m-d', strtotime($to . ' +1 day')) . ' 00:00:00');
+            $this->db->where('p.paid_at', '<', date('Y-m-d', strtotime($to . ' +1 day')) . ' 00:00:00');
         }
         return (float) ($this->db->get()['total'] ?? 0);
     }
 
     public function paid_by_day(string $from): array
     {
-        return $this->db->table($this->table)
-            ->select('DATE(paid_at) AS day')
-            ->select_sum('amount', 'total')
-            ->where('status', 'paid')
-            ->where('paid_at', '>=', $from . ' 00:00:00')
-            ->group_by('DATE(paid_at)')
+        return $this->db->table('payments p')
+            ->select('DATE(p.paid_at) AS day')
+            ->select_sum('p.amount', 'total')
+            ->inner_join('orders o', 'o.id = p.order_id')
+            ->where('p.status', 'paid')
+            ->where('o.payment_status', '<>', 'refunded')
+            ->where('p.paid_at', '>=', $from . ' 00:00:00')
+            ->group_by('DATE(p.paid_at)')
             ->get_all(PDO::FETCH_KEY_PAIR);
     }
 

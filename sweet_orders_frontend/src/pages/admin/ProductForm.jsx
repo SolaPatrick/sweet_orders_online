@@ -12,6 +12,8 @@ const EMPTY = {
   is_available: true,
   is_featured: false,
   is_customizable: false,
+  daily_limit: '',
+  sold_out_today: false,
   options: [],
 }
 
@@ -44,6 +46,8 @@ export default function ProductForm() {
           is_available: !!p.is_available,
           is_featured: !!p.is_featured,
           is_customizable: !!p.is_customizable,
+          daily_limit: p.daily_limit === null ? '' : String(p.daily_limit),
+          sold_out_today: !!p.sold_out_today,
           options: p.options.map((o) => ({ id: o.id, option_group: o.option_group, name: o.name, price_add: String(o.price_add) })),
         })
       })
@@ -147,6 +151,19 @@ export default function ProductForm() {
               <Toggle checked={form.is_available} onChange={(v) => setForm({ ...form, is_available: v })} label="Available" />
               <Toggle checked={form.is_featured} onChange={(v) => setForm({ ...form, is_featured: v })} label="Featured" />
               <Toggle checked={form.is_customizable} onChange={(v) => setForm({ ...form, is_customizable: v })} label="Customizable (cake message)" />
+            </div>
+          </section>
+
+          <section className="card stack">
+            <h3>Daily stock</h3>
+            <div className="grid-2">
+              <Field label="Daily limit" error={errors.daily_limit} hint="Most that can be ordered for one pickup or delivery day. Leave empty for no limit.">
+                <input type="number" min="1" step="1" value={form.daily_limit} placeholder="No limit" onChange={set('daily_limit')} />
+              </Field>
+              <div className="stack">
+                <Toggle checked={form.sold_out_today} onChange={(v) => setForm({ ...form, sold_out_today: v })} label="Sold out today" />
+                <span className="muted small">Blocks orders for today only. Customers can still order it for other days. It switches off by itself tomorrow.</span>
+              </div>
             </div>
           </section>
 

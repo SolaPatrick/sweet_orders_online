@@ -25,6 +25,13 @@ class Slot_model extends Model
             if ($changed) {
                 $this->release_one((int) $order['slot_id']);
                 $this->db->table('payments')->where('order_id', $order['id'])->where('status', 'pending')->update(['status' => 'expired']);
+                $this->db->table('order_status_history')->insert([
+                    'order_id'    => $order['id'],
+                    'from_status' => 'pending_payment',
+                    'to_status'   => 'cancelled',
+                    'changed_by'  => null,
+                    'note'        => 'Payment hold expired',
+                ]);
             }
             $this->db->commit();
         }

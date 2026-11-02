@@ -20,7 +20,7 @@ export default function Login() {
     try {
       const user = await login(form.email, form.password)
       const next = params.get('next')
-      navigate(next && next.startsWith('/') ? next : user.role === 'admin' ? '/admin' : '/', { replace: true })
+      navigate(next && next.startsWith('/') ? next : ['admin', 'staff'].includes(user.role) ? '/admin' : '/', { replace: true })
     } catch (err) {
       setError(err)
       setErrors(err.errors || {})
@@ -40,6 +40,11 @@ export default function Login() {
         <Field label="Password" error={errors.password}>
           <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </Field>
+        <p className="small right">
+          <Link to="/forgot-password" state={{ email: form.email }}>
+            Forgot password?
+          </Link>
+        </p>
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? 'Logging in…' : 'Log in'}
         </button>

@@ -7,10 +7,11 @@ class Product_model extends Model
     protected $fillable = [
         'category_id', 'name', 'slug', 'description', 'base_price', 'image',
         'lead_time_hours', 'is_customizable', 'is_available', 'is_featured',
+        'daily_limit', 'sold_out_date', 'is_archived',
     ];
 
     private const COLUMNS = 'p.id, p.category_id, p.name, p.slug, p.description, p.base_price, p.image, p.lead_time_hours,
-        p.is_customizable, p.is_available, p.is_featured, p.created_at, p.updated_at,
+        p.is_customizable, p.is_available, p.is_featured, p.daily_limit, p.sold_out_date, p.is_archived, p.created_at, p.updated_at,
         c.name AS category_name, c.slug AS category_slug';
 
     private const GROUP_ORDER = ['size' => 1, 'flavor' => 2, 'frosting' => 3];
@@ -44,7 +45,14 @@ class Product_model extends Model
         if (!empty($f['featured'])) {
             $this->db->where('p.is_featured', 1);
         }
+        $this->db->where('p.is_archived', !empty($f['archived']) ? 1 : 0);
         $rows = array_map([$this, 'cast'], $this->db->get_all());
+        $ratings = $this->ratings(array_column($rows, 'id'));
+        foreach ($rows as &$row) {
+            $row['rating_avg'] = $ratings[$row['id']]['avg'] ?? null;
+            $row['rating_count'] = $ratings[$row['id']]['count'] ?? 0;
+        }
+        unset($row);
 
         $sorts = [
             'featured'   => function ($a, $b) { return [$b['is_featured'], $a['category_sort']] <=> [$a['is_featured'], $b['category_sort']] ?: strcasecmp($a['name'], $b['name']); },
@@ -71,8 +79,49 @@ class Product_model extends Model
             ->get();
         if (!$row) return null;
         $row = $this->cast($row);
+        $rating = $this->ratings([$id])[$id] ?? null;
+        $row['rating_avg'] = $rating['avg'] ?? null;
+        $row['rating_count'] = $rating['count'] ?? 0;
         $row['options'] = $this->options($id);
         return $row;
+    }
+
+    public function ratings(array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        $rows = $this->db->table('reviews')
+            ->select('product_id')
+            ->select_avg('rating', 'avg_rating')
+            ->select_count('*', 'n')
+            ->in('product_id', $ids)
+            ->where('is_visible', 1)
+            ->group_by('product_id')
+            ->get_all();
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['product_id']] = ['avg' => round((float) $r['avg_rating'], 1), 'count' => (int) $r['n']];
+        }
+        return $out;
+    }
+
+    public function sold_on(int $product_id, string $date): int
+    {
+        $row = $this->db->table('order_items i')
+            ->select_sum('i.quantity', 'n')
+            ->inner_join('orders o', 'o.id = i.order_id')
+            ->inner_join('delivery_slots s', 's.id = o.slot_id')
+            ->where('i.product_id', $product_id)
+            ->where('s.slot_date', $date)
+            ->where('o.status', '<>', 'cancelled')
+            ->get();
+        return (int) ($row['n'] ?? 0);
+    }
+
+    public function has_orders(int $product_id): bool
+    {
+        return (bool) $this->db->table('order_items')->select('id')->where('product_id', $product_id)->limit(1)->get();
     }
 
     public function options(int $product_id): array
@@ -137,10 +186,13 @@ class Product_model extends Model
 
     public function cast(array $p): array
     {
-        foreach (['id', 'category_id', 'lead_time_hours', 'is_customizable', 'is_available', 'is_featured', 'category_sort'] as $k) {
+        foreach (['id', 'category_id', 'lead_time_hours', 'is_customizable', 'is_available', 'is_featured', 'is_archived', 'category_sort'] as $k) {
             if (isset($p[$k])) $p[$k] = (int) $p[$k];
         }
         $p['base_price'] = (float) $p['base_price'];
+        $p['daily_limit'] = isset($p['daily_limit']) ? (int) $p['daily_limit'] : null;
+        $p['sold_out_date'] = $p['sold_out_date'] ?? null;
+        $p['sold_out_today'] = $p['sold_out_date'] === date('Y-m-d');
         $p['image_url'] = $p['image'] ? product_image_url($p['image']) : null;
         return $p;
     }

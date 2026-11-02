@@ -66,6 +66,55 @@ class Auth extends MY_Api_Controller
         $this->api->respond(['message' => 'Logged out.']);
     }
 
+    public function forgot()
+    {
+        $this->api->require_method('POST');
+        $this->api->rate_limit('forgot:' . $this->request->ip_address(), 5, 900);
+        $in = $this->api->body();
+        $this->validate($in, ['email|Email' => 'required|valid_email|max_length[255]']);
+        $minutes = (int) config_item('reset_token_minutes');
+
+        $this->call->model(['User_model', 'Password_reset_model']);
+        $user = $this->User_model->find_by_email($in['email']);
+        if ($user && (int) $user['is_active']) {
+            $token = $this->Password_reset_model->issue((int) $user['id'], $minutes);
+            $link = $this->frontend_url('/reset-password?token=' . $token);
+            $body = "Hi {$user['name']},\n\nWe got a request to reset the password for your Sweet Orders account. Open this link to choose a new password:\n\n%s\n\n"
+                  . "The link works once and expires in {$minutes} minutes. If you did not ask for this, you can ignore this email.\n\nClayanna's Café · Sweet Orders Online";
+            $this->call->library('notifier');
+            $this->notifier->email($user['email'], 'Reset your Sweet Orders password', sprintf($body, $link), 'password_reset', null, (int) $user['id'],
+                sprintf($body, $this->frontend_url('/reset-password?token=[hidden]')));
+        }
+        $this->api->respond(['message' => "If an account uses that email, we sent a link to reset the password. It works for {$minutes} minutes."]);
+    }
+
+    public function reset()
+    {
+        $this->api->require_method('POST');
+        $this->api->rate_limit('reset:' . $this->request->ip_address(), 10, 900);
+        $in = $this->api->body();
+        $this->validate($in, [
+            'token|Reset link'                          => 'required|max_length[128]',
+            'new_password|New password'                 => 'required|min_length[8]|max_length[72]',
+            'new_password_confirm|Confirm new password' => 'required|matches[new_password]',
+        ]);
+        $this->call->model(['User_model', 'Password_reset_model']);
+        $reset = $this->Password_reset_model->find_valid((string) $in['token']);
+        $user = $reset ? $this->User_model->find((int) $reset['user_id']) : null;
+        if (!$reset || !$user || !(int) $user['is_active']) {
+            $this->api->respond_error('This reset link is invalid or has expired. Please ask for a new one.', 400);
+        }
+        $this->db->transaction();
+        if (!$this->Password_reset_model->mark_used((int) $reset['id'])) {
+            $this->db->roll_back();
+            $this->api->respond_error('This reset link was already used. Please ask for a new one.', 400);
+        }
+        $this->User_model->update($user['id'], ['password' => password_hash($in['new_password'], PASSWORD_DEFAULT)]);
+        $this->db->table('refresh_tokens')->where('user_id', (int) $user['id'])->delete();
+        $this->db->commit();
+        $this->api->respond(['message' => 'Your password was changed. Please log in with the new password.']);
+    }
+
     public function me()
     {
         $this->api->require_method('GET');

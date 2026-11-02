@@ -64,6 +64,32 @@ export const EVENT_LABELS = {
   completed: 'Completed',
   cancelled: 'Cancelled',
   contact: 'Contact form',
+  refunded: 'Refunded',
+  password_reset: 'Password reset',
+  slot_conflict: 'Slot conflict alert',
+}
+
+export const PAYMENT_LABELS = { unpaid: 'Unpaid', paid: 'Paid', failed: 'Failed', refunded: 'Refunded' }
+
+export const ROLE_LABELS = { customer: 'Customer', staff: 'Staff', admin: 'Admin' }
+
+export const OCCASIONS = [
+  ['birthday', 'Birthday'],
+  ['anniversary', 'Anniversary'],
+  ['wedding', 'Wedding'],
+  ['graduation', 'Graduation'],
+  ['christening', 'Christening'],
+  ['other', 'Other'],
+]
+
+export function occasionLabel(value) {
+  return OCCASIONS.find(([v]) => v === value)?.[1] || value || ''
+}
+
+export const MOBILE_RE = /^(\+639|09)\d{9}$/
+
+export function isMobile(value) {
+  return MOBILE_RE.test(String(value || '').replace(/[\s-]/g, ''))
 }
 
 export function label(map, key) {

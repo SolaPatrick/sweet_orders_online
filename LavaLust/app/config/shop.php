@@ -6,6 +6,15 @@ $config['delivery_fee']       = round((float) (getenv('DELIVERY_FEE') ?: 100), 2
 $config['order_hold_minutes'] = max(5, (int) (getenv('ORDER_HOLD_MINUTES') ?: 60));
 $config['cafe_email']         = getenv('CAFE_EMAIL') ?: (getenv('MAIL_FROM') ?: 'cafe@localhost');
 
+$config['max_unpaid_orders']   = 2;
+$config['order_rate_requests'] = 10;
+$config['order_rate_seconds']  = 600;
+$config['occasions']           = ['birthday', 'anniversary', 'wedding', 'graduation', 'christening', 'other'];
+$config['review_edit_days']    = 7;
+$config['reset_token_minutes'] = 30;
+$config['psgc_api_url']        = rtrim(getenv('PSGC_API_URL') ?: 'https://psgc.gitlab.io/api', '/');
+$config['psgc_cache_seconds']  = 30 * 86400;
+
 $config['paymongo_secret_key']     = getenv('PAYMONGO_SECRET_KEY') ?: '';
 $config['paymongo_webhook_secret'] = getenv('PAYMONGO_WEBHOOK_SECRET') ?: '';
 $config['paymongo_methods']        = getenv('PAYMONGO_METHODS') ?: 'gcash,card';

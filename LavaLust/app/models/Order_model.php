@@ -7,7 +7,12 @@ class Order_model extends Model
     protected $fillable = [
         'order_number', 'user_id', 'slot_id', 'fulfillment', 'delivery_address', 'contact_phone',
         'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes',
+        'address_street', 'address_barangay', 'address_city', 'address_landmark', 'zone_id',
+        'recipient_name', 'recipient_phone', 'occasion', 'pickup_name', 'pickup_phone', 'claim_code',
+        'prepared_by', 'prepared_at', 'cancel_reason', 'refund_amount', 'refund_reference', 'refunded_at',
     ];
+
+    public const LATE_PAYMENT_NOTE = 'Paid after hold expired; slot was full, needs a new slot';
 
     public const NEXT_STATUS = [
         'pending_payment'  => ['cancelled'],
@@ -74,10 +79,15 @@ class Order_model extends Model
         return $this->db->table('orders o')
             ->select('o.id, o.order_number, o.user_id, o.slot_id, o.fulfillment, o.delivery_address, o.contact_phone,
                       o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.notes, o.created_at, o.updated_at,
+                      o.address_street, o.address_barangay, o.address_city, o.address_landmark, o.zone_id,
+                      o.recipient_name, o.recipient_phone, o.occasion, o.pickup_name, o.pickup_phone, o.claim_code,
+                      o.prepared_by, o.prepared_at, o.cancel_reason, o.refund_amount, o.refund_reference, o.refunded_at,
                       s.slot_date, s.start_time, s.end_time,
-                      u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone')
+                      u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
+                      pu.name AS prepared_by_name')
             ->inner_join('delivery_slots s', 's.id = o.slot_id')
-            ->inner_join('users u', 'u.id = o.user_id');
+            ->inner_join('users u', 'u.id = o.user_id')
+            ->left_join('users pu', 'pu.id = o.prepared_by');
     }
 
     private function list_rows(?int $limit = null, int $offset = 0): array
@@ -103,10 +113,66 @@ class Order_model extends Model
                 $methods[$p['order_id']] = $p['method'];
             }
         }
-        return array_map(function ($o) use ($counts, $methods) {
+        $flagged = $this->db->table('order_status_history')
+            ->select('order_id')
+            ->in('order_id', $ids)
+            ->where('note', self::LATE_PAYMENT_NOTE)
+            ->get_all(PDO::FETCH_COLUMN);
+        return array_map(function ($o) use ($counts, $methods, $flagged) {
             $o['item_count'] = (int) ($counts[$o['id']] ?? 0);
             $o['payment_method'] = $methods[$o['id']] ?? null;
+            $o['needs_new_slot'] = in_array($o['id'], $flagged) && !in_array($o['status'], ['completed', 'cancelled'], true);
             return $this->cast($o);
+        }, $rows);
+    }
+
+    public function needing_new_slot(): array
+    {
+        $ids = $this->db->table('order_status_history h')
+            ->select('h.order_id')
+            ->inner_join('orders o', 'o.id = h.order_id')
+            ->where('h.note', self::LATE_PAYMENT_NOTE)
+            ->not_in('o.status', ['completed', 'cancelled'])
+            ->get_all(PDO::FETCH_COLUMN);
+        if (!$ids) {
+            return [];
+        }
+        $this->base_query()->in('o.id', array_values(array_unique($ids)));
+        return $this->list_rows();
+    }
+
+    public function count_unpaid_for_user(int $user_id): int
+    {
+        return (int) $this->db->table('orders')
+            ->where('user_id', $user_id)
+            ->where('status', 'pending_payment')
+            ->where('payment_status', '<>', 'paid')
+            ->count();
+    }
+
+    public function add_history(int $order_id, ?string $from, string $to, $changed_by = null, ?string $note = null): void
+    {
+        $this->db->table('order_status_history')->insert([
+            'order_id'    => $order_id,
+            'from_status' => $from,
+            'to_status'   => $to,
+            'changed_by'  => $changed_by ? (int) $changed_by : null,
+            'note'        => $note !== null && $note !== '' ? mb_substr($note, 0, 255) : null,
+        ]);
+    }
+
+    public function history(int $order_id): array
+    {
+        $rows = $this->db->table('order_status_history h')
+            ->select('h.id, h.from_status, h.to_status, h.changed_by, h.note, h.created_at, u.name AS changed_by_name, u.role AS changed_by_role')
+            ->left_join('users u', 'u.id = h.changed_by')
+            ->where('h.order_id', $order_id)
+            ->order_by('h.id')
+            ->get_all();
+        return array_map(function ($h) {
+            $h['id'] = (int) $h['id'];
+            $h['changed_by'] = $h['changed_by'] !== null ? (int) $h['changed_by'] : null;
+            return $h;
         }, $rows);
     }
 
@@ -235,6 +301,17 @@ class Order_model extends Model
                 ->order_by('id')
                 ->get_all();
         }
+        $order['history'] = $this->history($id);
+        $order['reviews'] = array_map(function ($r) {
+            foreach (['id', 'product_id', 'rating', 'is_visible'] as $k) {
+                $r[$k] = (int) $r[$k];
+            }
+            return $r;
+        }, $this->db->table('reviews')
+            ->select('id, product_id, rating, comment, is_visible, created_at, updated_at')
+            ->where('order_id', $id)
+            ->order_by('id')
+            ->get_all());
         $order['next_statuses'] = self::NEXT_STATUS[$order['status']] ?? [];
         $order['hold_expires_at'] = $order['status'] === 'pending_payment'
             ? date('Y-m-d H:i:s', strtotime($order['created_at']) + order_hold_minutes() * 60)
@@ -242,22 +319,31 @@ class Order_model extends Model
         return $order;
     }
 
-    public function set_status(int $id, string $status, ?string $payment_status = null): void
+    public function set_status(int $id, string $status, ?string $payment_status = null, array $extra = []): void
     {
-        $data = ['status' => $status];
+        $data = array_merge(['status' => $status], $extra);
         if ($payment_status) {
             $data['payment_status'] = $payment_status;
         }
         $this->db->table('orders')->where('id', $id)->update($data);
     }
 
+    public function change_status(array $order, string $status, $changed_by = null, ?string $note = null, array $extra = []): void
+    {
+        $this->set_status((int) $order['id'], $status, null, $extra);
+        $this->add_history((int) $order['id'], $order['status'], $status, $changed_by, $note);
+    }
+
     public function cast(array $o): array
     {
-        foreach (['id', 'user_id', 'slot_id', 'item_count'] as $k) {
+        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by'] as $k) {
             if (isset($o[$k])) $o[$k] = (int) $o[$k];
         }
         foreach (['subtotal', 'delivery_fee', 'total'] as $k) {
             $o[$k] = (float) $o[$k];
+        }
+        if (isset($o['refund_amount'])) {
+            $o['refund_amount'] = (float) $o['refund_amount'];
         }
         if (isset($o['start_time'])) {
             $o['start_time'] = substr($o['start_time'], 0, 5);

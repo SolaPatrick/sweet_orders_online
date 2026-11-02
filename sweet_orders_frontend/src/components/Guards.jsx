@@ -10,6 +10,15 @@ export function RequireAuth({ children }) {
   return children
 }
 
+export function RequireStaff({ children }) {
+  const { user, loading, isStaff } = useAuth()
+  const location = useLocation()
+  if (loading) return <Loader />
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
+  if (!isStaff) return <Navigate to="/403" replace />
+  return children
+}
+
 export function RequireAdmin({ children }) {
   const { user, loading, isAdmin } = useAuth()
   const location = useLocation()

@@ -142,6 +142,39 @@ export function ConfirmDialog({ open, title, message, confirmText = 'Delete', da
   )
 }
 
+export function FormDialog({ open, title, children, confirmText = 'Save', danger = false, busy, onConfirm, onCancel }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    if (!open && dialog.open) dialog.close()
+  }, [open])
+  return (
+    <dialog ref={ref} className="dialog" onCancel={(e) => { e.preventDefault(); onCancel() }}>
+      <form
+        className="stack"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          onConfirm()
+        }}
+      >
+        <h3>{title}</h3>
+        {children}
+        <div className="dialog-actions">
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            Back
+          </button>
+          <button type="submit" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={busy}>
+            {busy ? 'Working…' : confirmText}
+          </button>
+        </div>
+      </form>
+    </dialog>
+  )
+}
+
 export function Segmented({ options, value, onChange, className = '' }) {
   return (
     <div className={`chips ${className}`} role="group">
@@ -181,6 +214,43 @@ export function QuantityStepper({ value, onChange, min = 1, max = 50 }) {
       <button type="button" onClick={() => onChange(Math.min(max, value + 1))} aria-label="Increase">
         +
       </button>
+    </div>
+  )
+}
+
+export function Stars({ value, count, small = false }) {
+  const rounded = Math.round(Number(value || 0))
+  return (
+    <span className={`stars ${small ? 'small' : ''}`} aria-label={value ? `${value} out of 5 stars` : 'No ratings yet'}>
+      <span aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <span key={n} className={n <= rounded ? 'on' : ''}>
+            ★
+          </span>
+        ))}
+      </span>
+      {count !== undefined && <span className="muted">{count ? `${Number(value).toFixed(1)} (${count})` : 'No reviews yet'}</span>}
+    </span>
+  )
+}
+
+export function StarInput({ value, onChange, disabled }) {
+  return (
+    <div className="star-input" role="radiogroup" aria-label="Rating">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={value === n}
+          aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          className={n <= value ? 'on' : ''}
+          disabled={disabled}
+          onClick={() => onChange(n)}
+        >
+          ★
+        </button>
+      ))}
     </div>
   )
 }

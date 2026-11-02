@@ -375,7 +375,9 @@ input:disabled {
 .badge-pending_payment,
 .badge-pending,
 .badge-unpaid,
-.badge-logged {
+.badge-logged,
+.badge-warning,
+.badge-refunded {
   background: var(--warning-bg);
   color: var(--warning);
 }

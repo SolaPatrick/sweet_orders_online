@@ -6,7 +6,8 @@ class Health extends MY_Api_Controller
     protected $uses_database = false;
 
     const TABLES = ['users', 'refresh_tokens', 'categories', 'products', 'product_options', 'delivery_slots',
-                    'orders', 'order_items', 'order_item_options', 'payments', 'notifications_log'];
+                    'orders', 'order_items', 'order_item_options', 'payments', 'notifications_log',
+                    'delivery_zones', 'order_status_history', 'reviews', 'password_resets'];
 
     public function index()
     {
@@ -32,7 +33,7 @@ class Health extends MY_Api_Controller
             'status'       => 'ok',
             'app'          => "Sweet Orders Online API",
             'database'     => $database,
-            'tables_found' => $tables === null ? null : "{$tables} of 11",
+            'tables_found' => $tables === null ? null : "{$tables} of " . count(self::TABLES),
             'integrations' => [
                 'auth_secrets' => config_item('jwt_secret') && config_item('refresh_token_key') ? 'set' : 'missing',
                 'payments'     => config_item('paymongo_secret_key') ? 'paymongo' : 'simulate (no PayMongo key)',

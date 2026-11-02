@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
-import { peso } from '../lib/format'
-import { ErrorBox, Field, Loader, Photo, QuantityStepper, Segmented, useApi } from '../components/ui'
+import { dateTime, peso } from '../lib/format'
+import { Empty, ErrorBox, Field, Loader, Pagination, Photo, QuantityStepper, Segmented, Stars, useApi } from '../components/ui'
 import NotFound from './NotFound'
 
 const GROUPS = ['size', 'flavor', 'frosting']
@@ -57,7 +57,13 @@ function ProductView({ product }) {
         <Photo src={product.image_url} alt={product.name} className="large" />
         <div className="stack">
           <h1>{product.name}</h1>
+          <a href="#reviews" className="plain-link">
+            <Stars value={product.rating_avg} count={product.rating_count} />
+          </a>
           <div className="price">{peso(unitPrice)}</div>
+          {product.is_available && product.sold_out_today ? (
+            <div className="alert alert-warning">Sold out today. You can still order it for another day.</div>
+          ) : null}
           <p className="muted">
             {product.description}
             {product.lead_time_hours > 0 && ` Needs ${product.lead_time_hours} hours of preparation.`}
@@ -103,6 +109,39 @@ function ProductView({ product }) {
           )}
         </div>
       </div>
+      <ProductReviews productId={product.id} />
     </div>
+  )
+}
+
+function ProductReviews({ productId }) {
+  const [page, setPage] = useState(1)
+  const { data, loading, error, reload } = useApi(`/products/${productId}/reviews`, { page, per_page: 5 })
+  return (
+    <section id="reviews" className="stack reviews">
+      <h2>Reviews</h2>
+      {loading && !data ? (
+        <Loader />
+      ) : error ? (
+        <ErrorBox error={error} onRetry={reload} />
+      ) : data.data.length === 0 ? (
+        <Empty title="No reviews yet.">Customers can rate this after their order is completed.</Empty>
+      ) : (
+        <>
+          <Stars value={data.summary.rating_avg} count={data.summary.rating_count} />
+          {data.data.map((r) => (
+            <article key={r.id} className="card review">
+              <div className="row wrap">
+                <Stars value={r.rating} small />
+                <strong>{r.author}</strong>
+                <span className="muted small">{dateTime(r.created_at)}</span>
+              </div>
+              {r.comment && <p>{r.comment}</p>}
+            </article>
+          ))}
+          <Pagination meta={data.meta} onPage={setPage} />
+        </>
+      )}
+    </section>
   )
 }

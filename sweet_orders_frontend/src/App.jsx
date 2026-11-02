@@ -2,7 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import './App.css'
 import SiteLayout from './components/SiteLayout'
 import AdminLayout from './components/AdminLayout'
-import { RequireAdmin, RequireAuth } from './components/Guards'
+import { RequireAdmin, RequireAuth, RequireStaff } from './components/Guards'
 import Home from './pages/Home'
 import Menu from './pages/Menu'
 import ProductDetails from './pages/ProductDetails'
@@ -12,6 +12,8 @@ import OrderConfirmed from './pages/OrderConfirmed'
 import PaymentFailed from './pages/PaymentFailed'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import MyOrders from './pages/MyOrders'
 import OrderDetails from './pages/OrderDetails'
 import Profile from './pages/Profile'
@@ -28,6 +30,9 @@ import Categories from './pages/admin/Categories'
 import Slots from './pages/admin/Slots'
 import Payments from './pages/admin/Payments'
 import Notifications from './pages/admin/Notifications'
+import Users from './pages/admin/Users'
+import DeliveryZones from './pages/admin/DeliveryZones'
+import Reviews from './pages/admin/Reviews'
 
 export default function App() {
   return (
@@ -42,6 +47,8 @@ export default function App() {
         <Route path="payment-failed/:id" element={<RequireAuth><PaymentFailed /></RequireAuth>} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
+        <Route path="reset-password" element={<ResetPassword />} />
         <Route path="orders" element={<RequireAuth><MyOrders /></RequireAuth>} />
         <Route path="orders/:id" element={<RequireAuth><OrderDetails /></RequireAuth>} />
         <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
@@ -50,17 +57,20 @@ export default function App() {
         <Route path="403" element={<AccessDenied />} />
         <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
+      <Route path="admin" element={<RequireStaff><AdminLayout /></RequireStaff>}>
         <Route index element={<Dashboard />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="orders/:id" element={<AdminOrderDetail />} />
-        <Route path="products" element={<AdminProducts />} />
-        <Route path="products/new" element={<ProductForm />} />
-        <Route path="products/:id/edit" element={<ProductForm />} />
-        <Route path="categories" element={<Categories />} />
-        <Route path="slots" element={<Slots />} />
-        <Route path="payments" element={<Payments />} />
-        <Route path="notifications" element={<Notifications />} />
+        <Route path="products" element={<RequireAdmin><AdminProducts /></RequireAdmin>} />
+        <Route path="products/new" element={<RequireAdmin><ProductForm /></RequireAdmin>} />
+        <Route path="products/:id/edit" element={<RequireAdmin><ProductForm /></RequireAdmin>} />
+        <Route path="categories" element={<RequireAdmin><Categories /></RequireAdmin>} />
+        <Route path="slots" element={<RequireAdmin><Slots /></RequireAdmin>} />
+        <Route path="delivery-zones" element={<RequireAdmin><DeliveryZones /></RequireAdmin>} />
+        <Route path="payments" element={<RequireAdmin><Payments /></RequireAdmin>} />
+        <Route path="reviews" element={<RequireAdmin><Reviews /></RequireAdmin>} />
+        <Route path="users" element={<RequireAdmin><Users /></RequireAdmin>} />
+        <Route path="notifications" element={<RequireAdmin><Notifications /></RequireAdmin>} />
       </Route>
     </Routes>
   )

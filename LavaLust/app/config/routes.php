@@ -21,6 +21,8 @@ $router->group(['prefix' => '/api'], function ($router) {
     $router->post('/auth/login', 'Auth::login');
     $router->post('/auth/refresh', 'Auth::refresh');
     $router->post('/auth/logout', 'Auth::logout');
+    $router->post('/auth/forgot', 'Auth::forgot');
+    $router->post('/auth/reset', 'Auth::reset');
 
     $router->group(['middleware' => 'auth'], function ($router) {
         $router->get('/auth/me', 'Auth::me');
@@ -31,11 +33,16 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->get('/orders/{id}', 'Orders::show')->where_number('id');
         $router->post('/orders/{id}/pay', 'Orders::pay')->where_number('id');
         $router->post('/orders/{id}/cancel', 'Orders::cancel')->where_number('id');
+        $router->post('/orders/{id}/reviews', 'Reviews::create')->where_number('id');
+        $router->put('/reviews/{id}', 'Reviews::update')->where_number('id');
     });
 
     $router->get('/categories', 'Catalog::categories');
     $router->get('/products', 'Catalog::products');
     $router->get('/products/{id}', 'Catalog::product')->where_number('id');
+    $router->get('/products/{id}/reviews', 'Reviews::for_product')->where_number('id');
+
+    $router->get('/delivery-zones', 'Zones::index');
 
     $router->get('/slots', 'Slots::index');
     $router->get('/slots/dates', 'Slots::dates');
@@ -44,12 +51,31 @@ $router->group(['prefix' => '/api'], function ($router) {
 
     $router->post('/contact', 'Contact::send');
 
-    $router->group(['prefix' => '/admin', 'middleware' => ['auth', 'admin']], function ($router) {
+    $router->group(['prefix' => '/admin', 'middleware' => ['auth', 'staff']], function ($router) {
         $router->get('/dashboard', 'Admin::dashboard');
 
         $router->get('/orders', 'Admin::orders');
         $router->get('/orders/{id}', 'Admin::order')->where_number('id');
         $router->put('/orders/{id}/status', 'Admin::order_status')->where_number('id');
+    });
+
+    $router->group(['prefix' => '/admin', 'middleware' => ['auth', 'admin']], function ($router) {
+        $router->put('/orders/{id}/preparer', 'Admin::order_preparer')->where_number('id');
+        $router->post('/orders/{id}/refund', 'Admin::order_refund')->where_number('id');
+
+        $router->get('/users', 'Users::index');
+        $router->put('/users/{id}', 'Users::update')->where_number('id');
+
+        $router->get('/delivery-zones', 'Zones::admin_index');
+        $router->post('/delivery-zones', 'Zones::create');
+        $router->post('/delivery-zones/bulk', 'Zones::bulk');
+        $router->put('/delivery-zones/{id}', 'Zones::update')->where_number('id');
+        $router->delete('/delivery-zones/{id}', 'Zones::delete')->where_number('id');
+        $router->get('/psgc/cities', 'Zones::psgc_cities');
+        $router->get('/psgc/cities/{code}/barangays', 'Zones::psgc_barangays')->where_number('code');
+
+        $router->get('/reviews', 'Reviews::admin_index');
+        $router->put('/reviews/{id}', 'Reviews::admin_update')->where_number('id');
 
         $router->get('/products', 'Admin::products');
         $router->post('/products', 'Admin::product_create');

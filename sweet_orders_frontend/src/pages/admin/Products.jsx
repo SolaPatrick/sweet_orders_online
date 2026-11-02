@@ -8,7 +8,8 @@ export default function Products() {
   const [params, setParams] = useSearchParams()
   const q = params.get('q') || ''
   const category = params.get('category') || ''
-  const products = useApi('/admin/products', { q, category })
+  const archived = params.get('archived') || ''
+  const products = useApi('/admin/products', { q, category, archived })
   const categories = useApi('/admin/categories')
   const [toDelete, setToDelete] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -38,6 +39,30 @@ export default function Products() {
           is_available: !p.is_available,
         },
       })
+      products.reload()
+    } catch (err) {
+      setError(err)
+    }
+  }
+
+  const restore = async (p) => {
+    setError(null)
+    try {
+      await api(`/admin/products/${p.id}`, {
+        method: 'PUT',
+        body: {
+          name: p.name,
+          category_id: p.category_id,
+          base_price: p.base_price,
+          lead_time_hours: p.lead_time_hours,
+          description: p.description || '',
+          is_featured: p.is_featured,
+          is_customizable: p.is_customizable,
+          is_available: p.is_available,
+          is_archived: false,
+        },
+      })
+      setNotice(`${p.name} is back on the menu.`)
       products.reload()
     } catch (err) {
       setError(err)
@@ -83,6 +108,12 @@ export default function Products() {
             ))}
           </select>
         </Field>
+        <Field label="Show">
+          <select value={archived} onChange={(e) => set('archived', e.target.value)}>
+            <option value="">On the menu</option>
+            <option value="1">Archived</option>
+          </select>
+        </Field>
       </div>
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={error} />
@@ -121,12 +152,20 @@ export default function Products() {
                   <td>{p.is_featured ? 'Yes' : 'No'}</td>
                   <td>
                     <Toggle checked={!!p.is_available} onChange={() => toggleAvailable(p)} />
+                    {p.sold_out_today && <span className="badge badge-warning">Sold out today</span>}
+                    {p.daily_limit !== null && <div className="muted small">Limit {p.daily_limit}/day</div>}
                   </td>
                   <td className="right nowrap">
                     <Link to={`/admin/products/${p.id}/edit`}>Edit</Link> ·{' '}
-                    <button type="button" className="link-button danger" onClick={() => setToDelete(p)}>
-                      Delete
-                    </button>
+                    {p.is_archived ? (
+                      <button type="button" className="link-button" onClick={() => restore(p)}>
+                        Restore
+                      </button>
+                    ) : (
+                      <button type="button" className="link-button danger" onClick={() => setToDelete(p)}>
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -138,7 +177,7 @@ export default function Products() {
       <ConfirmDialog
         open={!!toDelete}
         title={`Delete ${toDelete?.name}?`}
-        message="The product and its options will be removed from the menu. Past orders keep their copy of the name and price. This cannot be undone."
+        message="If this product was ever ordered, it is archived instead: hidden from the menu but kept for past orders and reviews, and you can restore it later. Otherwise it is deleted for good."
         busy={busy}
         onConfirm={remove}
         onCancel={() => setToDelete(null)}

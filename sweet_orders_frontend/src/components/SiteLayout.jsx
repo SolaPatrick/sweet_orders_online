@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 
 function AccountMenu() {
-  const { user, isAdmin, logout } = useAuth()
+  const { user, isStaff, logout } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const navigate = useNavigate()
@@ -22,7 +22,7 @@ function AccountMenu() {
       </button>
       {open && (
         <div className="menu" onClick={() => setOpen(false)}>
-          {isAdmin && <Link to="/admin">Admin panel</Link>}
+          {isStaff && <Link to="/admin">Admin panel</Link>}
           <Link to="/orders">My orders</Link>
           <Link to="/profile">Profile</Link>
           <button

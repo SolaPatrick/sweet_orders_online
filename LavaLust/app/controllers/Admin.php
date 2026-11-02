@@ -35,7 +35,13 @@ class Admin extends MY_Api_Controller
         usort($due_today, function ($a, $b) { return strcmp($a['start_time'], $b['start_time']); });
         $recent = $this->Order_model->admin_search([], 8, 0);
 
-        $this->api->respond(['stats' => $stats, 'sales_last_7_days' => $last7, 'due_today' => $due_today, 'recent_orders' => $recent]);
+        $this->api->respond([
+            'stats'             => $stats,
+            'sales_last_7_days' => $last7,
+            'due_today'         => $due_today,
+            'recent_orders'     => $recent,
+            'needs_new_slot'    => $this->Order_model->needing_new_slot(),
+        ]);
     }
 
     public function orders()
@@ -73,12 +79,19 @@ class Admin extends MY_Api_Controller
     {
         $this->api->require_method('PUT');
         $in = $this->api->body();
-        $this->validate($in, ['status|Status' => 'required|in_list["paid,preparing,ready,out_for_delivery,completed,cancelled"]']);
+        $this->validate($in, [
+            'status|Status'               => 'required|in_list["paid,preparing,ready,out_for_delivery,completed,cancelled"]',
+            'note|Note'                   => 'max_length[255]',
+            'cancel_reason|Cancel reason' => 'max_length[255]',
+            'claim_code|Claim code'       => 'max_length[4]',
+            'override|Override'           => 'in_list["0,1,true,false"]',
+        ]);
         $this->call->model(['Order_model', 'Slot_model', 'Payment_model']);
         $order = $this->Order_model->detail((int) $id);
         if (!$order) {
             $this->api->respond_error('Order not found.', 404);
         }
+        $actor = $this->user();
         $allowed = Order_model::NEXT_STATUS[$order['status']] ?? [];
         if (!in_array($in['status'], $allowed, true)) {
             $this->api->respond_error("An order that is " . str_replace('_', ' ', $order['status']) . " cannot be changed to " . str_replace('_', ' ', $in['status']) . '.', 422);
@@ -90,16 +103,107 @@ class Admin extends MY_Api_Controller
             $this->api->respond_error('Pickup orders go to Ready for pickup instead of Out for delivery.', 422);
         }
 
-        $this->db->transaction();
-        $this->Order_model->set_status((int) $id, $in['status']);
+        $note = trim((string) ($in['note'] ?? ''));
+        $extra = [];
         if ($in['status'] === 'cancelled') {
-            $this->Slot_model->release_one((int) $order['slot_id']);
+            $reason = trim((string) ($in['cancel_reason'] ?? ''));
+            if ($order['payment_status'] === 'paid' && $reason === '') {
+                $this->fail_validation(['cancel_reason' => 'Please give a reason for cancelling a paid order.']);
+            }
+            if ($reason !== '') {
+                $extra['cancel_reason'] = $reason;
+                $note = $note !== '' ? $note : $reason;
+            }
+        }
+        if ($in['status'] === 'preparing') {
+            $extra['prepared_by'] = (int) $actor['id'];
+            $extra['prepared_at'] = date('Y-m-d H:i:s');
+        }
+        if ($in['status'] === 'completed' && $order['fulfillment'] === 'pickup' && $order['claim_code']) {
+            $code = trim((string) ($in['claim_code'] ?? ''));
+            if ($code !== $order['claim_code']) {
+                if ($actor['role'] === 'admin' && $this->request->boolean('override')) {
+                    if ($note === '') {
+                        $this->fail_validation(['note' => 'Please write why the claim code was skipped.']);
+                    }
+                    $note = 'Claim code skipped by admin: ' . $note;
+                } else {
+                    $this->fail_validation(['claim_code' => $code === '' ? 'Enter the 4-digit claim code from the customer.' : 'The claim code does not match.']);
+                }
+            } else {
+                $note = $note !== '' ? $note : 'Claim code checked';
+            }
+        }
+
+        $this->db->transaction();
+        $this->Order_model->change_status($order, $in['status'], $actor['id'], $note !== '' ? $note : null, $extra);
+        if ($in['status'] === 'cancelled') {
+            if (!$order['needs_new_slot']) {
+                $this->Slot_model->release_one((int) $order['slot_id']);
+            }
             $this->Payment_model->expire_pending((int) $id);
         }
         $this->db->commit();
 
         $this->notify_order((int) $id, $in['status']);
         $this->api->respond(['message' => 'Status updated and the customer was notified.', 'data' => $this->Order_model->detail((int) $id, true)]);
+    }
+
+    public function order_preparer($id)
+    {
+        $this->api->require_method('PUT');
+        $in = $this->api->body();
+        $this->validate($in, ['prepared_by|Preparer' => 'required|pattern[int]']);
+        $this->call->model(['Order_model', 'User_model']);
+        $order = $this->Order_model->detail((int) $id);
+        if (!$order) {
+            $this->api->respond_error('Order not found.', 404);
+        }
+        $preparer = $this->User_model->find((int) $in['prepared_by']);
+        if (!$preparer || !(int) $preparer['is_active'] || !in_array($preparer['role'], ['staff', 'admin'], true)) {
+            $this->fail_validation(['prepared_by' => 'Choose an active staff member or admin.']);
+        }
+        $this->db->transaction();
+        $this->db->table('orders')->where('id', (int) $id)->update([
+            'prepared_by' => (int) $preparer['id'],
+            'prepared_at' => $order['prepared_at'] ?: date('Y-m-d H:i:s'),
+        ]);
+        $this->Order_model->add_history((int) $id, $order['status'], $order['status'], $this->user()['id'], "Preparer set to {$preparer['name']}");
+        $this->db->commit();
+        $this->api->respond(['message' => "Preparer set to {$preparer['name']}.", 'data' => $this->Order_model->detail((int) $id, true)]);
+    }
+
+    public function order_refund($id)
+    {
+        $this->api->require_method('POST');
+        $in = $this->api->body();
+        $this->validate($in, [
+            'refund_amount|Refund amount'       => 'required|numeric|greater_than_equal_to[0.01]',
+            'refund_reference|Refund reference' => 'required|max_length[100]',
+        ]);
+        $this->call->model('Order_model');
+        $order = $this->Order_model->detail((int) $id);
+        if (!$order) {
+            $this->api->respond_error('Order not found.', 404);
+        }
+        if ($order['status'] !== 'cancelled' || $order['payment_status'] !== 'paid') {
+            $this->api->respond_error('Only a cancelled order that was paid can be refunded.', 409);
+        }
+        $amount = round((float) $in['refund_amount'], 2);
+        if ($amount > $order['total']) {
+            $this->fail_validation(['refund_amount' => 'The refund cannot be more than the order total of PHP ' . number_format($order['total'], 2) . '.']);
+        }
+        $this->db->transaction();
+        $this->db->table('orders')->where('id', (int) $id)->update([
+            'payment_status'   => 'refunded',
+            'refund_amount'    => $amount,
+            'refund_reference' => $in['refund_reference'],
+            'refunded_at'      => date('Y-m-d H:i:s'),
+        ]);
+        $this->Order_model->add_history((int) $id, 'cancelled', 'cancelled', $this->user()['id'], 'Refunded PHP ' . number_format($amount, 2) . " (ref {$in['refund_reference']})");
+        $this->db->commit();
+        $this->notify_order((int) $id, 'refunded');
+        $this->api->respond(['message' => 'Refund recorded and the customer was notified.', 'data' => $this->Order_model->detail((int) $id, true)]);
     }
 
     public function products()
@@ -110,6 +214,7 @@ class Admin extends MY_Api_Controller
         $rows = $this->Product_model->search([
             'q'        => $q['q'] ?? null,
             'category' => $q['category'] ?? null,
+            'archived' => $this->request->boolean('archived'),
             'sort'     => 'name',
         ]);
         $page = $this->paginate(count($rows), 50);
@@ -164,11 +269,15 @@ class Admin extends MY_Api_Controller
         if (!$product) {
             $this->api->respond_error('Product not found.', 404);
         }
+        if ($this->Product_model->has_orders((int) $id)) {
+            $this->Product_model->update((int) $id, ['is_archived' => 1]);
+            $this->api->respond(['message' => "{$product['name']} has past orders, so it was archived and hidden from the menu instead of deleted.", 'archived' => true]);
+        }
         $this->Product_model->delete((int) $id);
         if ($product['image']) {
             $this->remove_photo($product['image']);
         }
-        $this->api->respond(['message' => "{$product['name']} was deleted."]);
+        $this->api->respond(['message' => "{$product['name']} was deleted.", 'archived' => false]);
     }
 
     public function product_image($id)
@@ -250,6 +359,9 @@ class Admin extends MY_Api_Controller
             'is_featured|Is featured'      => 'in_list["0,1,true,false"]',
             'is_customizable|Is customizable' => 'in_list["0,1,true,false"]',
             'options|Options'              => 'pattern[array]',
+            'daily_limit|Daily limit'      => 'greater_than_equal_to[1]|pattern[int]',
+            'sold_out_today|Sold out today' => 'in_list["0,1,true,false"]',
+            'is_archived|Is archived'      => 'in_list["0,1,true,false"]',
         ]);
 
         if ((float) $in['base_price'] > 100000) {
@@ -288,6 +400,15 @@ class Admin extends MY_Api_Controller
             'is_featured'     => (int) $this->request->boolean('is_featured'),
             'is_customizable' => (int) $this->request->boolean('is_customizable'),
         ];
+        if (array_key_exists('daily_limit', $in)) {
+            $data['daily_limit'] = $in['daily_limit'] !== null && $in['daily_limit'] !== '' ? (int) $in['daily_limit'] : null;
+        }
+        if (array_key_exists('sold_out_today', $in)) {
+            $data['sold_out_date'] = $this->request->boolean('sold_out_today') ? date('Y-m-d') : null;
+        }
+        if (array_key_exists('is_archived', $in)) {
+            $data['is_archived'] = (int) $this->request->boolean('is_archived');
+        }
         return [$data, $options, array_key_exists('options', $in)];
     }
 
@@ -527,6 +648,9 @@ class Admin extends MY_Api_Controller
         $row = $this->Notification_model->find((int) $id);
         if (!$row) {
             $this->api->respond_error('Message not found.', 404);
+        }
+        if ($row['event'] === 'password_reset') {
+            $this->api->respond_error('Password reset links cannot be sent again. Ask the customer to use Forgot password.', 409);
         }
         $this->call->library('notifier');
         $result = $this->notifier->resend($row);

@@ -11,7 +11,7 @@ class Category_model extends Model
         $rows = $this->db->table('categories c')
             ->select('c.id, c.name, c.slug, c.sort_order')
             ->select_count('p.id', 'product_count')
-            ->left_join('products p', 'p.category_id = c.id')
+            ->left_join('products p', 'p.category_id = c.id AND p.is_archived = 0')
             ->group_by(['c.id', 'c.name', 'c.slug', 'c.sort_order'])
             ->get_all();
         $rows = array_map(function ($c) {

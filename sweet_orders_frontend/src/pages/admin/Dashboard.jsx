@@ -6,7 +6,7 @@ export default function Dashboard() {
   const { data, loading, error, reload } = useApi('/admin/dashboard')
   if (loading) return <Loader />
   if (error) return <ErrorBox error={error} onRetry={reload} />
-  const { stats, sales_last_7_days: sales, due_today: due, recent_orders: recent } = data
+  const { stats, sales_last_7_days: sales, due_today: due, recent_orders: recent, needs_new_slot: needsSlot = [] } = data
   const max = Math.max(1, ...sales.map((s) => s.total))
 
   return (
@@ -15,6 +15,21 @@ export default function Dashboard() {
         <h1>Dashboard</h1>
         <span className="muted">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
       </div>
+      {needsSlot.length > 0 && (
+        <div className="alert alert-warning stack">
+          <strong>
+            <span className="badge badge-warning">Needs a new slot</span> {needsSlot.length} paid order{needsSlot.length > 1 ? 's' : ''} lost {needsSlot.length > 1 ? 'their' : 'its'} time slot
+          </strong>
+          <span>
+            {needsSlot.map((o, i) => (
+              <span key={o.id}>
+                {i > 0 && ' · '}
+                <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link> ({o.customer_name})
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
       <div className="stat-row">
         <div className="card stat">
           <span className="muted small">Orders today</span>
@@ -65,6 +80,7 @@ export default function Dashboard() {
                       <td>{clock(o.start_time)}</td>
                       <td>
                         <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link>
+                        {o.needs_new_slot && <span className="badge badge-warning">New slot</span>}
                       </td>
                       <td>{o.customer_name}</td>
                       <td>{o.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</td>
