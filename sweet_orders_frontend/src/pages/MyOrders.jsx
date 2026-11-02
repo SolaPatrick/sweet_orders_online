@@ -30,7 +30,7 @@ export default function MyOrders() {
           </Link>
         </Empty>
       ) : (
-        <div className="table-wrap card">
+        <div className="table-wrap card stack-table">
           <table>
             <thead>
               <tr>
@@ -46,17 +46,19 @@ export default function MyOrders() {
             <tbody>
               {data.data.map((o) => (
                 <tr key={o.id}>
-                  <td>{o.order_number}</td>
-                  <td>{shortDate(o.created_at)}</td>
-                  <td>
+                  <td data-label="Order" className="cell-title">
+                    {o.order_number}
+                  </td>
+                  <td data-label="Placed">{shortDate(o.created_at)}</td>
+                  <td data-label="Schedule">
                     {o.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'} · {shortDate(o.slot_date)}, {clock(o.start_time)}
                   </td>
-                  <td>{o.item_count}</td>
-                  <td>{peso(o.total)}</td>
-                  <td>
+                  <td data-label="Items">{o.item_count}</td>
+                  <td data-label="Total">{peso(o.total)}</td>
+                  <td data-label="Status">
                     <StatusBadge status={o.status} />
                   </td>
-                  <td className="right">
+                  <td className="right cell-action">
                     <Link to={`/orders/${o.id}`}>{o.status === 'pending_payment' ? 'Pay now →' : 'View →'}</Link>
                   </td>
                 </tr>

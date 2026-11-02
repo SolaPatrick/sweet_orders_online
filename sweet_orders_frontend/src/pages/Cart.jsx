@@ -40,8 +40,10 @@ export default function Cart() {
                   </button>
                 </div>
               </div>
-              <QuantityStepper value={i.quantity} onChange={(q) => setQuantity(i.key, q)} />
-              <strong className="line-total">{peso(i.unit_price * i.quantity)}</strong>
+              <div className="cart-line-end">
+                <QuantityStepper value={i.quantity} onChange={(q) => setQuantity(i.key, q)} />
+                <strong className="line-total">{peso(i.unit_price * i.quantity)}</strong>
+              </div>
             </div>
           ))}
           <Link to="/menu">← Continue shopping</Link>

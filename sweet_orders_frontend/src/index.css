@@ -316,6 +316,7 @@ input:disabled {
 }
 
 .toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -533,6 +534,10 @@ tbody tr:last-child td {
 td input,
 td select {
   padding: 6px 8px;
+}
+.table-wrap td:first-child,
+.table-wrap td.right {
+  white-space: nowrap;
 }
 .detail-row td {
   background: var(--cream);

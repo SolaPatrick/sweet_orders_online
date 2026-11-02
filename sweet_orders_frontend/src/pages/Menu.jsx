@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import { Empty, ErrorBox, Loader, Pagination, useApi } from '../components/ui'
@@ -13,6 +14,7 @@ export default function Menu() {
     sort: params.get('sort') || 'featured',
     page: params.get('page') || 1,
   }
+  const [moreOpen, setMoreOpen] = useState(false)
   const categories = useApi('/categories')
   const products = useApi('/products', { ...filters, per_page: 12 })
 
@@ -49,34 +51,44 @@ export default function Menu() {
       </div>
 
       <div className="menu-layout">
-        <aside className="card filters">
-          <strong>Categories</strong>
-          <button type="button" className={`filter-link ${!filters.category ? 'active' : ''}`} onClick={() => set('category', '')}>
-            All
-          </button>
-          {categories.data?.data.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`filter-link ${filters.category === c.slug ? 'active' : ''}`}
-              onClick={() => set('category', c.slug)}
-            >
-              {c.name}
+        <aside className={`card filters ${moreOpen ? 'open' : ''}`}>
+          <strong className="filter-title">Categories</strong>
+          <div className="filter-cats">
+            <button type="button" className={`filter-link ${!filters.category ? 'active' : ''}`} onClick={() => set('category', '')}>
+              All
             </button>
-          ))}
-          <strong>Price</strong>
-          <label className="field">
-            <span className="field-label">Min</span>
-            <input type="number" min="0" placeholder="₱0" defaultValue={filters.min} onChange={(e) => set('min', e.target.value)} />
-          </label>
-          <label className="field">
-            <span className="field-label">Max</span>
-            <input type="number" min="0" placeholder="₱3,000" defaultValue={filters.max} onChange={(e) => set('max', e.target.value)} />
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={filters.available === '1'} onChange={(e) => set('available', e.target.checked ? '1' : '')} />
-            Available only
-          </label>
+            {categories.data?.data.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`filter-link ${filters.category === c.slug ? 'active' : ''}`}
+                onClick={() => set('category', c.slug)}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="filter-more-toggle" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
+            <span>Price and availability</span>
+            <span aria-hidden="true">{moreOpen ? '−' : '+'}</span>
+          </button>
+          <div className="filter-more">
+            <strong className="filter-title">Price</strong>
+            <div className="filter-price">
+              <label className="field">
+                <span className="field-label">Min</span>
+                <input type="number" min="0" placeholder="₱0" defaultValue={filters.min} onChange={(e) => set('min', e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Max</span>
+                <input type="number" min="0" placeholder="₱3,000" defaultValue={filters.max} onChange={(e) => set('max', e.target.value)} />
+              </label>
+            </div>
+            <label className="check">
+              <input type="checkbox" checked={filters.available === '1'} onChange={(e) => set('available', e.target.checked ? '1' : '')} />
+              Available only
+            </label>
+          </div>
         </aside>
 
         <section>
