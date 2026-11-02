@@ -3,13 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
-import { clock, isMobile, longDate, OCCASIONS, peso } from '../lib/format'
+import { ALLERGEN_DISCLAIMER, isMobile, longDate, OCCASIONS, peso } from '../lib/format'
+import { AllergenLine } from '../components/Allergens'
 import { Empty, ErrorBox, Field, Loader, Segmented } from '../components/ui'
+import SlotPicker from '../components/SlotPicker'
+import ZoneCombobox from '../components/ZoneCombobox'
 
-function localDate(ms) {
-  const d = new Date(ms)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+function hoursText(n) {
+  return n === 1 ? '1 hour' : `${n} hours`
 }
 
 export default function Checkout() {
@@ -30,6 +31,7 @@ export default function Checkout() {
   const [pickedSlotId, setSlotId] = useState(null)
   const [phone, setPhone] = useState(user?.phone || '')
   const [notes, setNotes] = useState('')
+  const [allergyNote, setAllergyNote] = useState('')
   const [recipientName, setRecipientName] = useState('')
   const [recipientPhone, setRecipientPhone] = useState('')
   const [occasion, setOccasion] = useState('')
@@ -51,36 +53,36 @@ export default function Checkout() {
     }
   }, [])
 
+  const productIds = [...new Set(cart.items.map((i) => i.product_id))].join(',')
+
   useEffect(() => {
     let alive = true
-    api('/slots/dates', { query: { fulfillment, days: 14 } })
+    api('/slots/dates', { query: { fulfillment, days: 27, lead_hours: cart.leadHours, product_ids: productIds } })
       .then((d) => {
         if (!alive) return
-        setDatesRes({ fulfillment, data: d.data })
+        setDatesRes({ fulfillment, days: d.days, meta: d.meta })
         setDeliveryFee(d.delivery_fee)
-        const earliest = localDate(Date.now() + cart.leadHours * 3600 * 1000)
-        const first = d.data.find((x) => !x.blocked && x.open_slots > 0 && x.date >= earliest)
-        setDate((cur) => (cur && d.data.some((x) => x.date === cur && !x.blocked) ? cur : first?.date || ''))
+        setDate((cur) => (cur && d.days.some((x) => x.date === cur && x.status === 'open') ? cur : d.meta.earliest_date || ''))
       })
       .catch((err) => alive && setError(err))
     return () => {
       alive = false
     }
-  }, [fulfillment, cart.leadHours])
+  }, [fulfillment, cart.leadHours, productIds])
 
-  const slotsKey = `${date}|${fulfillment}|${cart.leadHours}`
+  const slotsKey = `${date}|${fulfillment}|${cart.leadHours}|${productIds}`
   useEffect(() => {
     if (!date) return
     let alive = true
-    api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours } })
+    api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours, product_ids: productIds } })
       .then((d) => alive && setSlotsRes({ key: slotsKey, data: d.data }))
       .catch((err) => alive && setError(err))
     return () => {
       alive = false
     }
-  }, [date, fulfillment, cart.leadHours, slotsKey])
+  }, [date, fulfillment, cart.leadHours, productIds, slotsKey])
 
-  const dates = datesRes?.fulfillment === fulfillment ? datesRes.data : null
+  const dates = datesRes?.fulfillment === fulfillment ? datesRes : null
   const slots = !date ? [] : slotsRes?.key === slotsKey ? slotsRes.data : null
 
   if (!cart.items.length) {
@@ -99,11 +101,18 @@ export default function Checkout() {
   const useZones = Boolean(zones?.length)
   const zone = useZones ? zones.find((z) => String(z.id) === zoneId) : null
   const minZoneFee = useZones ? Math.min(...zones.map((z) => z.fee)) : 0
-  const earliestDay = datesRes?.earliest || ''
   const fee = fulfillment === 'delivery' ? (useZones ? zone?.fee || 0 : deliveryFee) : 0
   const total = cart.subtotal + fee
   const visibleSlots = (slots || []).filter((s) => !s.too_soon)
   const slotId = visibleSlots.some((s) => s.id === pickedSlotId && s.available) ? pickedSlotId : null
+  const slowest = dates?.meta.lead_item || [...cart.items].sort((a, b) => (b.lead_time_hours || 0) - (a.lead_time_hours || 0))[0]
+  const leadHours = dates?.meta.lead_hours ?? cart.leadHours
+  const earliestDate = dates?.meta.earliest_date
+  const leadNote = !leadHours
+    ? ''
+    : earliestDate
+      ? `Your ${slowest?.name || 'order'} needs ${hoursText(slowest?.lead_time_hours || leadHours)}, so the earliest is ${longDate(earliestDate)}.`
+      : `Your ${slowest?.name || 'order'} needs ${hoursText(slowest?.lead_time_hours || leadHours)}. There are no open dates in the next 4 weeks.`
   const deliveryLabel = useZones ? `Delivery from ${peso(minZoneFee)}` : deliveryFee ? `Delivery +${peso(deliveryFee)}` : 'Delivery'
 
   const placeOrder = async (e) => {
@@ -149,6 +158,7 @@ export default function Checkout() {
           pickup_name: someoneElse ? pickupName : '',
           pickup_phone: someoneElse ? pickupPhone : '',
           notes,
+          allergy_note: allergyNote,
           payment_method: method,
           items: cart.items.map((i) => ({
             product_id: i.product_id,
@@ -166,7 +176,7 @@ export default function Checkout() {
       setError(err)
       setErrors(err.errors || {})
       if (err.status === 409) {
-        api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours } }).then((d) => setSlotsRes({ key: slotsKey, data: d.data }))
+        api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours, product_ids: productIds } }).then((d) => setSlotsRes({ key: slotsKey, data: d.data }))
       }
       setBusy(false)
     }
@@ -196,16 +206,14 @@ export default function Checkout() {
             )}
             {fulfillment === 'delivery' && useZones && (
               <div className="stack">
-                <Field label="Barangay / area" error={errors.zone_id} hint="We only deliver to the areas listed here.">
-                  <select value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-                    <option value="">Choose your barangay…</option>
-                    {zones.map((z) => (
-                      <option key={z.id} value={z.id}>
-                        {z.name}, {z.city} · {peso(z.fee)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <ZoneCombobox
+                  zones={zones}
+                  value={zoneId}
+                  onChange={setZoneId}
+                  label="Barangay / area"
+                  hint="Type to search. We only deliver to the areas listed here."
+                  error={errors.zone_id}
+                />
                 <Field label="House no. and street" error={errors.address_street}>
                   <input value={street} maxLength={255} placeholder="e.g. 12 Rizal St., Purok 3" onChange={(e) => setStreet(e.target.value)} />
                 </Field>
@@ -221,38 +229,19 @@ export default function Checkout() {
             {!dates ? (
               <Loader />
             ) : (
-              <Segmented
-                className="wrap"
-                value={date}
-                onChange={setDate}
-                options={dates.map((d) => {
-                  const tooSoon = d.date < earliestDay
-                  return {
-                    value: d.date,
-                    label: `${longDate(d.date)}${d.blocked ? ' · Closed' : tooSoon ? ' · Too soon' : d.open_slots === 0 ? ' · Full' : ''}`,
-                    disabled: d.blocked || tooSoon || d.open_slots === 0,
-                  }
-                })}
-              />
-            )}
-            {slots === null ? (
-              <Loader />
-            ) : visibleSlots.length === 0 ? (
-              <p className="muted">No open slots on this date. Please pick another date.</p>
-            ) : (
-              <Segmented
-                className="wrap"
-                value={slotId}
-                onChange={setSlotId}
-                options={visibleSlots.map((s) => ({
-                  value: s.id,
-                  label: `${clock(s.start_time)}–${clock(s.end_time)} · ${s.is_blocked ? 'Closed' : s.is_full ? 'Full' : `${s.places_left} left`}`,
-                  disabled: !s.available,
-                }))}
+              <SlotPicker
+                key={fulfillment}
+                days={dates.days}
+                date={date}
+                onDate={setDate}
+                slots={slots && visibleSlots}
+                slotId={slotId}
+                onSlot={setSlotId}
+                fulfillment={fulfillment}
+                note={leadNote}
               />
             )}
             {errors.slot_id && <span className="field-error">{errors.slot_id}</span>}
-            {cart.leadHours > 0 && <p className="muted small">Slots earlier than the {cart.leadHours}-hour lead time are hidden.</p>}
           </section>
 
           <section className="card">
@@ -318,17 +307,30 @@ export default function Checkout() {
             <Field label="Order notes (optional)" error={errors.notes}>
               <input value={notes} maxLength={1000} placeholder="Anything we should know?" onChange={(e) => setNotes(e.target.value)} />
             </Field>
+            <Field label="Any allergies we should know? (optional)" error={errors.allergy_note} hint={`${allergyNote.length}/500`}>
+              <textarea
+                rows={2}
+                maxLength={500}
+                value={allergyNote}
+                placeholder="e.g. My daughter is allergic to peanuts and tree nuts."
+                onChange={(e) => setAllergyNote(e.target.value)}
+              />
+            </Field>
+            <p className="muted small">{ALLERGEN_DISCLAIMER}</p>
           </section>
         </div>
 
         <aside className="card summary">
           <h3>Your order</h3>
           {cart.items.map((i) => (
-            <div key={i.key} className="kv small">
-              <span>
-                {i.name} × {i.quantity}
-              </span>
-              <span>{peso(i.unit_price * i.quantity)}</span>
+            <div key={i.key} className="summary-line">
+              <div className="kv small">
+                <span>
+                  {i.name} × {i.quantity}
+                </span>
+                <span>{peso(i.unit_price * i.quantity)}</span>
+              </div>
+              <AllergenLine allergens={i.allergens} mine={user?.allergies} />
             </div>
           ))}
           {Object.entries(errors)

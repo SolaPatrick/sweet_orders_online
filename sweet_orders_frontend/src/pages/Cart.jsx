@@ -2,10 +2,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { peso } from '../lib/format'
 import { Empty, Photo, QuantityStepper } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
+import { AllergenLine } from '../components/Allergens'
 
 export default function Cart() {
   const { items, subtotal, leadHours, setQuantity, remove } = useCart()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   if (!items.length) {
     return (
@@ -33,6 +36,7 @@ export default function Cart() {
                 <div className="muted small">
                   {[...i.option_labels, i.cake_message && `"${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <AllergenLine allergens={i.allergens} mine={user?.allergies} />
                 <div className="small">
                   <Link to={`/products/${i.product_id}`}>Edit</Link> ·{' '}
                   <button type="button" className="link-button" onClick={() => remove(i.key)}>
@@ -41,7 +45,8 @@ export default function Cart() {
                 </div>
               </div>
               <div className="cart-line-end">
-                <QuantityStepper value={i.quantity} onChange={(q) => setQuantity(i.key, q)} />
+                <QuantityStepper value={i.quantity} onChange={(q) => setQuantity(i.key, q)} max={i.max_qty ?? 50} />
+                {i.max_qty !== undefined && i.max_qty < 50 && i.quantity >= i.max_qty && <span className="muted small">Only {i.max_qty} left</span>}
                 <strong className="line-total">{peso(i.unit_price * i.quantity)}</strong>
               </div>
             </div>

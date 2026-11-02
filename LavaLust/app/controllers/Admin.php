@@ -7,7 +7,7 @@ class Admin extends MY_Api_Controller
     public function dashboard()
     {
         $this->api->require_method('GET');
-        $this->call->model(['Slot_model', 'Order_model', 'Payment_model']);
+        $this->call->model(['Slot_model', 'Order_model', 'Payment_model', 'Product_model']);
         $this->Slot_model->release_expired_holds();
         $today = date('Y-m-d');
         $week_start = date('Y-m-d', strtotime('monday this week'));
@@ -41,6 +41,10 @@ class Admin extends MY_Api_Controller
             'due_today'         => $due_today,
             'recent_orders'     => $recent,
             'needs_new_slot'    => $this->Order_model->needing_new_slot(),
+            'needs_stock'       => $this->Order_model->needing_stock(),
+            'ready_made'        => array_map(function ($p) {
+                return ['id' => $p['id'], 'name' => $p['name'], 'stock_qty' => $p['stock_qty'], 'is_available' => $p['is_available']];
+            }, $this->Product_model->search(['type' => 'ready_made', 'sort' => 'name'])),
         ]);
     }
 
@@ -86,7 +90,7 @@ class Admin extends MY_Api_Controller
             'claim_code|Claim code'       => 'max_length[4]',
             'override|Override'           => 'in_list["0,1,true,false"]',
         ]);
-        $this->call->model(['Order_model', 'Slot_model', 'Payment_model']);
+        $this->call->model(['Order_model', 'Slot_model', 'Payment_model', 'Product_model']);
         $order = $this->Order_model->detail((int) $id);
         if (!$order) {
             $this->api->respond_error('Order not found.', 404);
@@ -142,6 +146,9 @@ class Admin extends MY_Api_Controller
                 $this->Slot_model->release_one((int) $order['slot_id']);
             }
             $this->Payment_model->expire_pending((int) $id);
+            if ($this->Product_model->return_stock((int) $id)) {
+                $this->Order_model->add_history((int) $id, 'cancelled', 'cancelled', $actor['id'], 'Ready-made stock put back');
+            }
         }
         $this->db->commit();
 
@@ -201,6 +208,10 @@ class Admin extends MY_Api_Controller
             'refunded_at'      => date('Y-m-d H:i:s'),
         ]);
         $this->Order_model->add_history((int) $id, 'cancelled', 'cancelled', $this->user()['id'], 'Refunded PHP ' . number_format($amount, 2) . " (ref {$in['refund_reference']})");
+        $this->call->model('Product_model');
+        if ($this->Product_model->return_stock((int) $id)) {
+            $this->Order_model->add_history((int) $id, 'cancelled', 'cancelled', $this->user()['id'], 'Ready-made stock put back');
+        }
         $this->db->commit();
         $this->notify_order((int) $id, 'refunded');
         $this->api->respond(['message' => 'Refund recorded and the customer was notified.', 'data' => $this->Order_model->detail((int) $id, true)]);
@@ -236,10 +247,10 @@ class Admin extends MY_Api_Controller
     {
         $this->api->require_method('POST');
         $this->call->model('Product_model');
-        [$data, $options] = $this->product_input();
+        [$data, $options, , $allergens] = $this->product_input();
         $this->db->transaction();
         $id = $this->Product_model->insert($data);
-        $this->Product_model->replace_options((int) $id, $options);
+        $this->save_allergens((int) $id, $options, $this->Product_model->replace_options((int) $id, $options), $allergens ?? []);
         $this->db->commit();
         $this->api->respond(['message' => 'Product added.', 'data' => $this->Product_model->detail((int) $id)], 201);
     }
@@ -251,14 +262,46 @@ class Admin extends MY_Api_Controller
         if (!$this->Product_model->find((int) $id)) {
             $this->api->respond_error('Product not found.', 404);
         }
-        [$data, $options, $has_options] = $this->product_input((int) $id);
+        [$data, $options, $has_options, $allergens] = $this->product_input((int) $id);
         $this->db->transaction();
         $this->Product_model->update((int) $id, $data);
-        if ($has_options) {
-            $this->Product_model->replace_options((int) $id, $options);
-        }
+        $option_ids = $has_options ? $this->Product_model->replace_options((int) $id, $options) : [];
+        $this->save_allergens((int) $id, $has_options ? $options : [], $option_ids, $allergens);
         $this->db->commit();
         $this->api->respond(['message' => 'Product saved.', 'data' => $this->Product_model->detail((int) $id)]);
+    }
+
+    private function save_allergens(int $product_id, array $options, array $option_ids, ?array $allergens): void
+    {
+        $this->call->model('Allergen_model');
+        if ($allergens !== null) {
+            $this->Allergen_model->set_for_product($product_id, $allergens);
+        }
+        foreach ($options as $i => $o) {
+            if (isset($option_ids[$i]) && is_array($o['allergen_ids'] ?? null)) {
+                $this->Allergen_model->set_for_option((int) $option_ids[$i], $o['allergen_ids']);
+            }
+        }
+    }
+
+    public function product_stock($id)
+    {
+        $this->api->require_method('PUT');
+        $in = $this->api->body();
+        $this->validate($in, ['stock_qty|Stock' => 'required|greater_than_equal_to[0]|pattern[int]']);
+        if ((int) $in['stock_qty'] > 100000) {
+            $this->fail_validation(['stock_qty' => 'Stock looks too high.']);
+        }
+        $this->call->model('Product_model');
+        $product = $this->Product_model->detail((int) $id);
+        if (!$product || $product['is_archived']) {
+            $this->api->respond_error('Product not found.', 404);
+        }
+        if ($product['product_type'] !== 'ready_made') {
+            $this->api->respond_error("{$product['name']} is made to order, so it has no stock count. Switch it to ready-made in the product form first.", 422);
+        }
+        $this->Product_model->set_stock((int) $id, (int) $in['stock_qty']);
+        $this->api->respond(['message' => "{$product['name']} stock set to {$in['stock_qty']}.", 'data' => $this->Product_model->detail((int) $id)]);
     }
 
     public function product_delete($id)
@@ -349,12 +392,19 @@ class Admin extends MY_Api_Controller
     private function product_input(?int $id = null): array
     {
         $in = $this->api->body();
+        $current = $id ? $this->Product_model->find($id) : null;
+        $type = $in['product_type'] ?? ($current['product_type'] ?? 'made_to_order');
+        $ready = $type === 'ready_made';
         $this->validate($in, [
             'name|Name'                    => 'required|max_length[150]',
             'category_id|Category'         => 'required|pattern[int]',
             'base_price|Base price'        => 'required|numeric|greater_than_equal_to[0]',
-            'lead_time_hours|Lead time'    => 'required|greater_than_equal_to[0]|pattern[int]',
+            'product_type|Product type'    => 'in_list["ready_made,made_to_order"]',
+            'stock_qty|Stock'              => 'greater_than_equal_to[0]|pattern[int]',
+            'lead_time_hours|Lead time'    => ($ready ? '' : 'required|') . 'greater_than_equal_to[0]|pattern[int]',
             'description|Description'      => 'max_length[2000]',
+            'ingredients|Ingredients'      => 'max_length[2000]',
+            'allergen_ids|Allergens'       => 'pattern[array]',
             'is_available|Is available'    => 'in_list["0,1,true,false"]',
             'is_featured|Is featured'      => 'in_list["0,1,true,false"]',
             'is_customizable|Is customizable' => 'in_list["0,1,true,false"]',
@@ -378,6 +428,19 @@ class Admin extends MY_Api_Controller
             $slug = $base . '-' . $n;
         }
 
+        if ($ready) {
+            $has_stock = isset($in['stock_qty']) && $in['stock_qty'] !== '';
+            if (!$has_stock && ($current['stock_qty'] ?? null) === null) {
+                $this->fail_validation(['stock_qty' => 'Enter how many are in stock (0 or more).']);
+            }
+            if ($has_stock && (int) $in['stock_qty'] > 100000) {
+                $this->fail_validation(['stock_qty' => 'Stock looks too high.']);
+            }
+            if (!empty($in['options'])) {
+                $this->fail_validation(['options' => 'Ready-made products have no options. Remove them or switch to made to order.']);
+            }
+        }
+
         $options = [];
         foreach ((array) ($in['options'] ?? []) as $i => $o) {
             $group = $o['option_group'] ?? '';
@@ -386,7 +449,14 @@ class Admin extends MY_Api_Controller
             if (!in_array($group, ['size', 'flavor', 'frosting'], true) || $name === '' || mb_strlen($name) > 100 || !is_numeric($add) || $add < 0) {
                 $this->fail_validation(["options.{$i}" => 'Each option needs a group (size, flavor or frosting), a name and a price add of 0 or more.']);
             }
-            $options[] = ['id' => $o['id'] ?? null, 'option_group' => $group, 'name' => $name, 'price_add' => (float) $add, 'sort_order' => $i + 1];
+            $options[] = [
+                'id'           => $o['id'] ?? null,
+                'option_group' => $group,
+                'name'         => $name,
+                'price_add'    => (float) $add,
+                'sort_order'   => $i + 1,
+                'allergen_ids' => array_key_exists('allergen_ids', $o) ? (array) $o['allergen_ids'] : null,
+            ];
         }
 
         $data = [
@@ -395,11 +465,17 @@ class Admin extends MY_Api_Controller
             'slug'            => $slug,
             'description'     => ($in['description'] ?? '') !== '' ? $in['description'] : null,
             'base_price'      => round((float) $in['base_price'], 2),
-            'lead_time_hours' => (int) $in['lead_time_hours'],
+            'product_type'    => $type,
+            'lead_time_hours' => $ready ? Product_model::READY_MADE_LEAD_HOURS : (int) $in['lead_time_hours'],
             'is_available'    => (int) $this->request->boolean('is_available', true),
             'is_featured'     => (int) $this->request->boolean('is_featured'),
-            'is_customizable' => (int) $this->request->boolean('is_customizable'),
+            'is_customizable' => $ready ? 0 : (int) $this->request->boolean('is_customizable'),
         ];
+        if (!$ready) {
+            $data['stock_qty'] = null;
+        } elseif (isset($in['stock_qty']) && $in['stock_qty'] !== '') {
+            $data['stock_qty'] = (int) $in['stock_qty'];
+        }
         if (array_key_exists('daily_limit', $in)) {
             $data['daily_limit'] = $in['daily_limit'] !== null && $in['daily_limit'] !== '' ? (int) $in['daily_limit'] : null;
         }
@@ -409,7 +485,12 @@ class Admin extends MY_Api_Controller
         if (array_key_exists('is_archived', $in)) {
             $data['is_archived'] = (int) $this->request->boolean('is_archived');
         }
-        return [$data, $options, array_key_exists('options', $in)];
+        if (array_key_exists('ingredients', $in)) {
+            $ingredients = trim((string) $in['ingredients']);
+            $data['ingredients'] = $ingredients !== '' ? $ingredients : null;
+        }
+        $allergens = array_key_exists('allergen_ids', $in) ? (array) $in['allergen_ids'] : null;
+        return [$data, $options, $ready || array_key_exists('options', $in), $allergens];
     }
 
     public function categories()

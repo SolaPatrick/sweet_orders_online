@@ -20,6 +20,7 @@ class Orders extends MY_Api_Controller
             'occasion|Occasion'               => 'in_list["' . implode(',', config_item('occasions')) . '"]',
             'pickup_name|Pickup name'         => 'max_length[100]',
             'pickup_phone|Pickup mobile'      => ['', self::MOBILE_PATTERN],
+            'allergy_note|Allergy note'       => 'max_length[500]',
         ]);
         if (count($in['items']) > 30) {
             $this->api->respond_error('Your cart has too many lines.', 422);
@@ -90,6 +91,10 @@ class Orders extends MY_Api_Controller
                 $errors["items.{$i}"] = 'Cake message is limited to 100 characters and notes to 255.';
                 continue;
             }
+            if ($product['product_type'] === 'ready_made' && ((array) ($item['option_ids'] ?? []) || $message !== '')) {
+                $errors["items.{$i}"] = "{$product['name']} is ready-made, so options and a cake message can't be added. Please remove it and add it again.";
+                continue;
+            }
 
             $chosen = [];
             $by_id = array_column($product['options'], null, 'id');
@@ -143,6 +148,14 @@ class Orders extends MY_Api_Controller
         $day = date('D, M j', strtotime($slot['slot_date']));
         foreach ($wanted as $product_id => $w) {
             $p = $w['product'];
+            if ($p['product_type'] === 'ready_made') {
+                if ($w['qty'] > $p['stock_qty']) {
+                    $errors["items.{$w['index']}"] = $p['stock_qty'] > 0
+                        ? "Only {$p['stock_qty']} {$p['name']} left."
+                        : "{$p['name']} is sold out today.";
+                }
+                continue;
+            }
             if ($p['sold_out_date'] === $slot['slot_date']) {
                 $errors["items.{$w['index']}"] = "{$p['name']} is sold out for {$day}.";
                 continue;
@@ -192,6 +205,7 @@ class Orders extends MY_Api_Controller
             'status'           => 'pending_payment',
             'payment_status'   => 'unpaid',
             'notes'            => !empty($in['notes']) ? $in['notes'] : null,
+            'allergy_note'     => $text('allergy_note'),
         ], $address), $lines);
         $this->Order_model->add_history($order_id, null, 'pending_payment', $user['id'], 'Order placed');
         $this->db->commit();

@@ -18,6 +18,7 @@ import {
 } from '../../lib/format'
 import { ErrorBox, Field, FormDialog, Loader, Notice, StatusBadge, Toggle, useApi } from '../../components/ui'
 import OrderHistory from '../../components/OrderHistory'
+import { AllergenLine } from '../../components/Allergens'
 
 const ACTION_TEXT = {
   preparing: 'Mark as Preparing',
@@ -91,6 +92,7 @@ export default function OrderDetail() {
       <div>
         <h1>
           Order {order.order_number} {order.needs_new_slot && <span className="badge badge-warning">Needs a new slot</span>}
+          {order.stock_short && <span className="badge badge-warning">Short on stock</span>}
         </h1>
         <span className="muted">
           Placed {dateTime(order.created_at)} · {order.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'} ·{' '}
@@ -101,6 +103,16 @@ export default function OrderDetail() {
       </div>
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={actionError} />
+      {order.allergy_note && (
+        <div className="alert alert-error allergy-note" role="note">
+          <strong>Allergy note from the customer:</strong> {order.allergy_note}
+        </div>
+      )}
+      {order.stock_short && (
+        <div className="alert alert-warning">
+          This order was paid, but a ready-made item had already sold out, so no stock was taken. Call the customer to agree on a later date, a swap or a refund.
+        </div>
+      )}
       {order.needs_new_slot && (
         <div className="alert alert-warning">
           This order was paid after its payment hold ended, and its time slot had filled up. Call the customer to agree on a new time.
@@ -149,6 +161,7 @@ export default function OrderDetail() {
                 <div className="muted small">
                   {[optionText(i.options), i.cake_message && `Message: "${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <AllergenLine allergens={i.allergens} />
               </div>
               <strong>{peso(i.line_total)}</strong>
             </div>

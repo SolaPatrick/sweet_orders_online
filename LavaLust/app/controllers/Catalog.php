@@ -10,6 +10,13 @@ class Catalog extends MY_Api_Controller
         $this->api->respond(['data' => $this->Category_model->all_with_counts()]);
     }
 
+    public function allergens()
+    {
+        $this->api->require_method('GET');
+        $this->call->model('Allergen_model');
+        $this->api->respond(['data' => $this->Allergen_model->all()]);
+    }
+
     public function products()
     {
         $this->api->require_method('GET');
@@ -22,6 +29,8 @@ class Catalog extends MY_Api_Controller
             'max'       => $q['max'] ?? null,
             'available' => $this->request->boolean('available'),
             'featured'  => $this->request->boolean('featured'),
+            'type'      => $q['type'] ?? null,
+            'exclude_allergens' => $q['exclude_allergens'] ?? null,
             'sort'      => $q['sort'] ?? 'featured',
         ]);
         $page = $this->paginate(count($rows), 24);

@@ -19,7 +19,7 @@ class Zone_model extends Model
         }
         $rows = array_map([$this, 'cast'], $this->db->get_all());
         usort($rows, function ($a, $b) {
-            return [$a['city'], $a['sort_order'], $a['name']] <=> [$b['city'], $b['sort_order'], $b['name']];
+            return place_compare($a['city'], $b['city']) ?: place_compare($a['name'], $b['name']) ?: $a['id'] <=> $b['id'];
         });
         return $rows;
     }

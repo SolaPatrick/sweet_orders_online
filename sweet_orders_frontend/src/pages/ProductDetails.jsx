@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
-import { dateTime, peso } from '../lib/format'
+import { useAuth } from '../context/AuthContext'
+import { ALLERGEN_DISCLAIMER, availability, dateTime, isReadyMade, maxQuantity, mergeAllergens, peso } from '../lib/format'
+import { AllergenLine } from '../components/Allergens'
 import { Empty, ErrorBox, Field, Loader, Pagination, Photo, QuantityStepper, Segmented, Stars, useApi } from '../components/ui'
 import NotFound from './NotFound'
 
@@ -29,8 +31,14 @@ function ProductView({ product }) {
   const [quantity, setQuantity] = useState(1)
   const [added, setAdded] = useState(false)
 
+  const ready = isReadyMade(product)
+  const maxQty = maxQuantity(product)
+  const badge = availability(product)
+  const canBuy = product.is_available && (!ready || maxQty > 0)
   const selected = groups.map((g) => g.options.find((o) => o.id === chosen[g.group])).filter(Boolean)
   const unitPrice = product.base_price + selected.reduce((n, o) => n + o.price_add, 0)
+  const { user } = useAuth()
+  const contains = mergeAllergens(product.allergens || [], ...selected.map((o) => o.allergens || []))
 
   const addToCart = () => {
     add({
@@ -40,10 +48,13 @@ function ProductView({ product }) {
       unit_price: unitPrice,
       option_ids: selected.map((o) => o.id),
       option_labels: selected.map((o) => o.name),
-      cake_message: product.is_customizable ? message.trim() : '',
+      cake_message: product.is_customizable && !ready ? message.trim() : '',
       notes: notes.trim(),
-      quantity,
+      quantity: Math.min(quantity, maxQty),
       lead_time_hours: product.lead_time_hours,
+      product_type: product.product_type,
+      max_qty: maxQty,
+      allergens: contains.map((a) => ({ id: a.id, name: a.name })),
     })
     setAdded(true)
   }
@@ -61,42 +72,60 @@ function ProductView({ product }) {
             <Stars value={product.rating_avg} count={product.rating_count} />
           </a>
           <div className="price">{peso(unitPrice)}</div>
-          {product.is_available && product.sold_out_today ? (
+          <div className="row wrap">
+            {badge && <span className={`badge badge-${badge.tone}`}>{badge.text}</span>}
+            {ready && maxQty > 0 && maxQty <= 5 && <strong className="small">{maxQty} left</strong>}
+          </div>
+          {ready && product.is_available && maxQty === 0 ? (
+            <div className="alert alert-warning">Sold out today. We bake a fresh batch most mornings, so please check again tomorrow.</div>
+          ) : !ready && product.is_available && product.sold_out_today ? (
             <div className="alert alert-warning">Sold out today. You can still order it for another day.</div>
           ) : null}
           <p className="muted">
             {product.description}
-            {product.lead_time_hours > 0 && ` Needs ${product.lead_time_hours} hours of preparation.`}
+            {ready
+              ? ' Ready-made: already baked, pick it up or have it delivered from the next open slot.'
+              : product.lead_time_hours > 0 && ` Needs ${product.lead_time_hours} hours of preparation.`}
           </p>
-          {groups.map((g) => (
-            <div key={g.group} className="option-group">
-              <span className="field-label">{g.group[0].toUpperCase() + g.group.slice(1)}</span>
-              <Segmented
-                value={chosen[g.group]}
-                onChange={(v) => setChosen((c) => ({ ...c, [g.group]: v }))}
-                options={g.options.map((o) => ({ value: o.id, label: o.price_add ? `${o.name} +${peso(o.price_add)}` : o.name }))}
-              />
-            </div>
-          ))}
-          {product.is_customizable ? (
+          {!ready &&
+            groups.map((g) => (
+              <div key={g.group} className="option-group">
+                <span className="field-label">{g.group[0].toUpperCase() + g.group.slice(1)}</span>
+                <Segmented
+                  value={chosen[g.group]}
+                  onChange={(v) => setChosen((c) => ({ ...c, [g.group]: v }))}
+                  options={g.options.map((o) => ({ value: o.id, label: o.price_add ? `${o.name} +${peso(o.price_add)}` : o.name }))}
+                />
+              </div>
+            ))}
+          {product.is_customizable && !ready ? (
             <Field label="Cake message (optional, 100 characters)">
               <input maxLength={100} value={message} placeholder="Happy Birthday, Ana!" onChange={(e) => setMessage(e.target.value)} />
             </Field>
           ) : null}
+          <div className="allergen-box" aria-live="polite">
+            {contains.length ? <AllergenLine allergens={contains} mine={user?.allergies} /> : <div className="contains small">No allergens listed.</div>}
+            {product.ingredients && (
+              <p className="small">
+                <strong>Ingredients:</strong> {product.ingredients}
+              </p>
+            )}
+            <p className="muted small">{ALLERGEN_DISCLAIMER}</p>
+          </div>
           <Field label="Notes for the baker">
             <input maxLength={255} value={notes} placeholder="e.g. less sweet" onChange={(e) => setNotes(e.target.value)} />
           </Field>
           <div className="row">
             <span className="field-label">Quantity</span>
-            <QuantityStepper value={quantity} onChange={setQuantity} />
+            <QuantityStepper value={Math.min(quantity, Math.max(1, maxQty))} onChange={setQuantity} max={Math.max(1, maxQty)} />
           </div>
-          {product.is_available ? (
+          {canBuy ? (
             <button type="button" className="btn btn-primary btn-block" onClick={addToCart}>
               Add to cart · {peso(unitPrice * quantity)}
             </button>
           ) : (
             <button type="button" className="btn btn-block" disabled>
-              Sold out
+              {ready && product.is_available ? 'Sold out today' : 'Sold out'}
             </button>
           )}
           {added && (

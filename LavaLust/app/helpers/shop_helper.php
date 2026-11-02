@@ -34,3 +34,17 @@ if (!function_exists('slugify')) {
         return $slug !== '' ? $slug : 'item-' . time();
     }
 }
+
+if (!function_exists('place_compare')) {
+    function place_compare(string $a, string $b): int
+    {
+        $fold = function (string $s): string {
+            return strtr(mb_strtolower($s), [
+                'á' => 'a', 'à' => 'a', 'â' => 'a', 'ä' => 'a', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+                'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i', 'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'ö' => 'o',
+                'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            ]);
+        };
+        return strnatcasecmp($fold($a), $fold($b)) ?: strcmp($a, $b);
+    }
+}

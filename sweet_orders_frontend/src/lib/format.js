@@ -67,6 +67,7 @@ export const EVENT_LABELS = {
   refunded: 'Refunded',
   password_reset: 'Password reset',
   slot_conflict: 'Slot conflict alert',
+  stock_short: 'Stock alert',
 }
 
 export const PAYMENT_LABELS = { unpaid: 'Unpaid', paid: 'Paid', failed: 'Failed', refunded: 'Refunded' }
@@ -101,6 +102,41 @@ export function todayISO(offsetDays = 0) {
   d.setDate(d.getDate() + offsetDays)
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export const ALLERGEN_DISCLAIMER = "Made in a kitchen that also handles nuts, eggs, dairy and wheat. We can't guarantee any item is allergen-free."
+
+export function allergenNames(list = []) {
+  return list.map((a) => a.name).join(', ')
+}
+
+export function mergeAllergens(...lists) {
+  const seen = new Map()
+  lists.flat().forEach((a) => a && seen.set(a.id, a))
+  return [...seen.values()].sort((a, b) => a.id - b.id)
+}
+
+export function isReadyMade(product) {
+  return product?.product_type === 'ready_made'
+}
+
+export function maxQuantity(product) {
+  return isReadyMade(product) ? Math.min(50, product.stock_qty || 0) : 50
+}
+
+export function availability(product) {
+  if (!product?.is_available) return null
+  if (isReadyMade(product)) {
+    return product.stock_qty > 0 ? { text: 'Available today', tone: 'paid' } : { text: 'Sold out today', tone: 'cancelled' }
+  }
+  if (product.sold_out_today) return { text: 'Sold out today', tone: 'warning' }
+  const hours = product.lead_time_hours || 0
+  if (hours >= 24) {
+    const days = Math.ceil(hours / 24)
+    return { text: `Order ${days} day${days === 1 ? '' : 's'} ahead`, tone: 'preparing' }
+  }
+  if (hours > 0) return { text: `Order ${hours} hour${hours === 1 ? '' : 's'} ahead`, tone: 'preparing' }
+  return null
 }
 
 export function optionText(options = []) {

@@ -12,10 +12,13 @@ export default function Menu() {
     max: params.get('max') || '',
     available: params.get('available') || '',
     sort: params.get('sort') || 'featured',
+    exclude_allergens: params.get('exclude_allergens') || '',
     page: params.get('page') || 1,
   }
   const [moreOpen, setMoreOpen] = useState(false)
   const categories = useApi('/categories')
+  const allergens = useApi('/allergens')
+  const hidden = filters.exclude_allergens ? filters.exclude_allergens.split(',').map(Number) : []
   const products = useApi('/products', { ...filters, per_page: 12 })
 
   const set = (key, value) => {
@@ -69,7 +72,7 @@ export default function Menu() {
             ))}
           </div>
           <button type="button" className="filter-more-toggle" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
-            <span>Price and availability</span>
+            <span>Price, availability and allergens</span>
             <span aria-hidden="true">{moreOpen ? '−' : '+'}</span>
           </button>
           <div className="filter-more">
@@ -88,6 +91,24 @@ export default function Menu() {
               <input type="checkbox" checked={filters.available === '1'} onChange={(e) => set('available', e.target.checked ? '1' : '')} />
               Available only
             </label>
+            <strong className="filter-title">Hide items with</strong>
+            <div className="allergen-filter">
+              {allergens.data?.data.map((a) => (
+                <label key={a.id} className="check">
+                  <input
+                    type="checkbox"
+                    checked={hidden.includes(a.id)}
+                    onChange={(e) =>
+                      set(
+                        'exclude_allergens',
+                        (e.target.checked ? [...hidden, a.id] : hidden.filter((id) => id !== a.id)).sort((x, y) => x - y).join(','),
+                      )
+                    }
+                  />
+                  {a.name}
+                </label>
+              ))}
+            </div>
           </div>
         </aside>
 

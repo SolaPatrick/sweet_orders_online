@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import { ErrorBox, Field, Notice } from '../components/ui'
+import { ErrorBox, Field, Notice, useApi } from '../components/ui'
+import { AllergenChecks } from '../components/Allergens'
 
 export default function Profile() {
   const { user, setUser } = useAuth()
-  const [details, setDetails] = useState({ name: user.name, phone: user.phone || '' })
+  const [details, setDetails] = useState({ name: user.name, phone: user.phone || '', allergies: user.allergies || [] })
+  const allergens = useApi('/allergens')
   const [pw, setPw] = useState({ current_password: '', new_password: '', new_password_confirm: '' })
   const [state, setState] = useState({ details: {}, pw: {} })
 
@@ -45,6 +47,13 @@ export default function Profile() {
         <Field label="Mobile number for SMS updates" error={d.errors?.phone}>
           <input value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} />
         </Field>
+        <AllergenChecks
+          label="My allergies"
+          all={allergens.data?.data}
+          value={details.allergies}
+          onChange={(allergies) => setDetails({ ...details, allergies })}
+        />
+        <span className="muted small">We warn you in the cart and at checkout when an item contains one of these. It does not block your order.</span>
         <div>
           <button type="submit" className="btn btn-primary" disabled={d.busy}>
             {d.busy ? 'Saving…' : 'Save changes'}

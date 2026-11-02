@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { peso } from '../../lib/format'
 import { ConfirmDialog, Empty, ErrorBox, Field, Loader, Notice, Photo, Toggle, useApi } from '../../components/ui'
+import StockQuickEdit from '../../components/StockQuickEdit'
 
 export default function Products() {
   const [params, setParams] = useSearchParams()
@@ -131,6 +132,7 @@ export default function Products() {
                 <th>Product</th>
                 <th>Category</th>
                 <th>Base price</th>
+                <th>Type</th>
                 <th>Lead time</th>
                 <th>Featured</th>
                 <th>Available</th>
@@ -148,11 +150,32 @@ export default function Products() {
                   </td>
                   <td>{p.category_name}</td>
                   <td>{peso(p.base_price)}</td>
-                  <td>{p.lead_time_hours} h</td>
+                  <td>
+                    {p.product_type === 'ready_made' ? (
+                      <div className="stack-tight">
+                        <span className={`badge ${p.stock_qty > 0 ? 'badge-paid' : 'badge-cancelled'}`}>
+                          Ready-made · {p.stock_qty > 0 ? `${p.stock_qty} left` : 'sold out'}
+                        </span>
+                        {!p.is_archived && (
+                          <StockQuickEdit
+                            key={`${p.id}-${p.stock_qty}`}
+                            product={p}
+                            onSaved={(_, message) => {
+                              setNotice(message)
+                              products.reload()
+                            }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      'Made to order'
+                    )}
+                  </td>
+                  <td>{p.product_type === 'ready_made' ? '—' : `${p.lead_time_hours} h`}</td>
                   <td>{p.is_featured ? 'Yes' : 'No'}</td>
                   <td>
                     <Toggle checked={!!p.is_available} onChange={() => toggleAvailable(p)} />
-                    {p.sold_out_today && <span className="badge badge-warning">Sold out today</span>}
+                    {p.sold_out_today && p.product_type !== 'ready_made' && <span className="badge badge-warning">Sold out today</span>}
                     {p.daily_limit !== null && <div className="muted small">Limit {p.daily_limit}/day</div>}
                   </td>
                   <td className="right nowrap">

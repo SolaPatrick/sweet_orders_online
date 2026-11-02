@@ -32,14 +32,14 @@ class Psgc
                 ];
             }
             usort($cities, function ($a, $b) {
-                return strcasecmp($a['name'], $b['name']);
+                return strnatcasecmp($a['name'], $b['name']);
             });
             return $cities;
         });
 
         $q = mb_strtolower(trim($q));
         if ($q === '') {
-            return array_slice($all, 0, $limit);
+            return $this->by_name(array_slice($all, 0, $limit));
         }
         $starts = [];
         $contains = [];
@@ -52,7 +52,15 @@ class Psgc
                 $contains[] = $c;
             }
         }
-        return array_slice(array_merge($starts, $contains), 0, $limit);
+        return $this->by_name(array_slice(array_merge($starts, $contains), 0, $limit));
+    }
+
+    private function by_name(array $rows): array
+    {
+        usort($rows, function ($a, $b) {
+            return place_compare($a['name'], $b['name']) ?: place_compare((string) ($a['province'] ?? ''), (string) ($b['province'] ?? ''));
+        });
+        return $rows;
     }
 
     public function city(string $code)
@@ -67,15 +75,11 @@ class Psgc
 
     public function barangays(string $code): array
     {
-        return $this->cached('psgc_barangays_' . preg_replace('/\D/', '', $code), function () use ($code) {
-            $rows = array_map(function ($b) {
+        return $this->by_name($this->cached('psgc_barangays_' . preg_replace('/\D/', '', $code), function () use ($code) {
+            return array_map(function ($b) {
                 return ['code' => (string) $b['code'], 'name' => $b['name']];
             }, $this->get_json('/cities-municipalities/' . rawurlencode($code) . '/barangays.json'));
-            usort($rows, function ($a, $b) {
-                return strnatcasecmp($a['name'], $b['name']);
-            });
-            return $rows;
-        });
+        }));
     }
 
     private function cached(string $key, callable $load): array

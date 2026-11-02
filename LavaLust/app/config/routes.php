@@ -38,6 +38,7 @@ $router->group(['prefix' => '/api'], function ($router) {
     });
 
     $router->get('/categories', 'Catalog::categories');
+    $router->get('/allergens', 'Catalog::allergens');
     $router->get('/products', 'Catalog::products');
     $router->get('/products/{id}', 'Catalog::product')->where_number('id');
     $router->get('/products/{id}/reviews', 'Reviews::for_product')->where_number('id');
@@ -57,6 +58,7 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->get('/orders', 'Admin::orders');
         $router->get('/orders/{id}', 'Admin::order')->where_number('id');
         $router->put('/orders/{id}/status', 'Admin::order_status')->where_number('id');
+        $router->put('/products/{id}/stock', 'Admin::product_stock')->where_number('id');
     });
 
     $router->group(['prefix' => '/admin', 'middleware' => ['auth', 'admin']], function ($router) {

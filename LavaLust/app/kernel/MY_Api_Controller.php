@@ -167,7 +167,7 @@ class MY_Api_Controller extends Controller
             'method'    => $info['method'] ?? $payment['method'],
             'paid_at'   => $info['paid_at'] ?? date('Y-m-d H:i:s'),
         ]);
-        $order = $this->db->raw('SELECT id, status, slot_id FROM orders WHERE id = ? FOR UPDATE', [$payment['order_id']])->fetch();
+        $order = $this->db->raw('SELECT id, status, slot_id, stock_taken FROM orders WHERE id = ? FOR UPDATE', [$payment['order_id']])->fetch();
         $this->call->model('Order_model');
         $note = null;
         $slot_lost = false;
@@ -183,12 +183,37 @@ class MY_Api_Controller extends Controller
         if ($revive) {
             $this->Order_model->add_history((int) $order['id'], $order['status'], 'paid', null, $note);
         }
+        $short = [];
+        if (!(int) $order['stock_taken']) {
+            $this->call->model('Product_model');
+            $short = $this->Product_model->take_stock((int) $order['id']);
+            if ($short) {
+                $this->Order_model->add_history((int) $order['id'], 'paid', 'paid', null, Order_model::STOCK_SHORT_NOTE);
+            }
+        }
         $this->db->commit();
         $this->notify_order((int) $order['id'], 'payment_confirmed');
         if ($slot_lost) {
             $this->alert_cafe_slot_full((int) $order['id']);
         }
+        if ($short) {
+            $this->alert_cafe_stock_short((int) $order['id'], $short);
+        }
         return true;
+    }
+
+    private function alert_cafe_stock_short(int $order_id, array $names): void
+    {
+        try {
+            $this->call->library('notifier');
+            $order = $this->Order_model->detail($order_id);
+            $body = "Order {$order['order_number']} was paid, but there is not enough ready-made stock left for: " . implode(', ', $names) . ".\n\n"
+                  . "The payment was recorded and the order is marked Paid. Stock was not changed. Please contact {$order['customer_name']} ({$order['contact_phone']}, {$order['customer_email']}) to agree on a later pickup or delivery, a swap, or a refund.\n\n"
+                  . 'Open the order: ' . $this->frontend_url('/admin/orders/' . $order_id);
+            $this->notifier->email(config_item('cafe_email'), "Action needed: order {$order['order_number']} is short on ready-made stock", $body, 'stock_short', $order_id, null);
+        } catch (Throwable $e) {
+            $this->logger->log('error', 'Notification', 'Cafe alert failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        }
     }
 
     private function alert_cafe_slot_full(int $order_id): void

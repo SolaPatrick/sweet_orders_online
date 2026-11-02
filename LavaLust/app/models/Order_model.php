@@ -6,13 +6,15 @@ class Order_model extends Model
     protected $table = 'orders';
     protected $fillable = [
         'order_number', 'user_id', 'slot_id', 'fulfillment', 'delivery_address', 'contact_phone',
-        'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes',
+        'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes', 'allergy_note',
         'address_street', 'address_barangay', 'address_city', 'address_landmark', 'zone_id',
         'recipient_name', 'recipient_phone', 'occasion', 'pickup_name', 'pickup_phone', 'claim_code',
         'prepared_by', 'prepared_at', 'cancel_reason', 'refund_amount', 'refund_reference', 'refunded_at',
     ];
 
     public const LATE_PAYMENT_NOTE = 'Paid after hold expired; slot was full, needs a new slot';
+
+    public const STOCK_SHORT_NOTE = 'Paid but ready-made stock ran out';
 
     public const NEXT_STATUS = [
         'pending_payment'  => ['cancelled'],
@@ -78,7 +80,7 @@ class Order_model extends Model
     {
         return $this->db->table('orders o')
             ->select('o.id, o.order_number, o.user_id, o.slot_id, o.fulfillment, o.delivery_address, o.contact_phone,
-                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.notes, o.created_at, o.updated_at,
+                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.stock_taken, o.notes, o.allergy_note, o.created_at, o.updated_at,
                       o.address_street, o.address_barangay, o.address_city, o.address_landmark, o.zone_id,
                       o.recipient_name, o.recipient_phone, o.occasion, o.pickup_name, o.pickup_phone, o.claim_code,
                       o.prepared_by, o.prepared_at, o.cancel_reason, o.refund_amount, o.refund_reference, o.refunded_at,
@@ -113,25 +115,45 @@ class Order_model extends Model
                 $methods[$p['order_id']] = $p['method'];
             }
         }
-        $flagged = $this->db->table('order_status_history')
-            ->select('order_id')
+        $flagged = [];
+        $short = [];
+        foreach ($this->db->table('order_status_history')
+            ->select('order_id, note')
             ->in('order_id', $ids)
-            ->where('note', self::LATE_PAYMENT_NOTE)
-            ->get_all(PDO::FETCH_COLUMN);
-        return array_map(function ($o) use ($counts, $methods, $flagged) {
+            ->in('note', [self::LATE_PAYMENT_NOTE, self::STOCK_SHORT_NOTE])
+            ->get_all() as $h) {
+            if ($h['note'] === self::LATE_PAYMENT_NOTE) {
+                $flagged[] = $h['order_id'];
+            } else {
+                $short[] = $h['order_id'];
+            }
+        }
+        return array_map(function ($o) use ($counts, $methods, $flagged, $short) {
+            $open = !in_array($o['status'], ['completed', 'cancelled'], true);
             $o['item_count'] = (int) ($counts[$o['id']] ?? 0);
             $o['payment_method'] = $methods[$o['id']] ?? null;
-            $o['needs_new_slot'] = in_array($o['id'], $flagged) && !in_array($o['status'], ['completed', 'cancelled'], true);
+            $o['needs_new_slot'] = in_array($o['id'], $flagged) && $open;
+            $o['stock_short'] = in_array($o['id'], $short) && $open;
             return $this->cast($o);
         }, $rows);
     }
 
     public function needing_new_slot(): array
     {
+        return $this->flagged_open(self::LATE_PAYMENT_NOTE);
+    }
+
+    public function needing_stock(): array
+    {
+        return $this->flagged_open(self::STOCK_SHORT_NOTE);
+    }
+
+    private function flagged_open(string $note): array
+    {
         $ids = $this->db->table('order_status_history h')
             ->select('h.order_id')
             ->inner_join('orders o', 'o.id = h.order_id')
-            ->where('h.note', self::LATE_PAYMENT_NOTE)
+            ->where('h.note', $note)
             ->not_in('o.status', ['completed', 'cancelled'])
             ->get_all(PDO::FETCH_COLUMN);
         if (!$ids) {
@@ -273,7 +295,23 @@ class Order_model extends Model
                 ];
             }
         }
-        $order['items'] = array_map(function ($i) use ($options) {
+        $option_ids = [];
+        foreach ($rows ?? [] as $o) {
+            if ($o['product_option_id'] !== null) {
+                $option_ids[$o['order_item_id']][] = (int) $o['product_option_id'];
+            }
+        }
+        $this->call->model('Allergen_model');
+        $by_product = $this->Allergen_model->for_products(array_column($items, 'product_id'));
+        $by_option = $this->Allergen_model->for_options(array_merge([], ...array_values($option_ids)));
+        $line_allergens = function ($i) use ($by_product, $by_option, $option_ids) {
+            $ids = $by_product[(int) $i['product_id']] ?? [];
+            foreach ($option_ids[$i['id']] ?? [] as $oid) {
+                $ids = array_merge($ids, $by_option[$oid] ?? []);
+            }
+            return $this->Allergen_model->pick(array_values(array_unique($ids)));
+        };
+        $order['items'] = array_map(function ($i) use ($options, $line_allergens) {
             return [
                 'id'           => (int) $i['id'],
                 'product_id'   => $i['product_id'] !== null ? (int) $i['product_id'] : null,
@@ -284,6 +322,7 @@ class Order_model extends Model
                 'cake_message' => $i['cake_message'],
                 'notes'        => $i['notes'],
                 'options'      => $options[$i['id']] ?? [],
+                'allergens'    => $line_allergens($i),
             ];
         }, $items);
 
@@ -336,7 +375,7 @@ class Order_model extends Model
 
     public function cast(array $o): array
     {
-        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by'] as $k) {
+        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by', 'stock_taken'] as $k) {
             if (isset($o[$k])) $o[$k] = (int) $o[$k];
         }
         foreach (['subtotal', 'delivery_fee', 'total'] as $k) {

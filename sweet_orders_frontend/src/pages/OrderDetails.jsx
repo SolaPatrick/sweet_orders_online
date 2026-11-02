@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { dateTime, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
 import { ConfirmDialog, ErrorBox, Loader, Notice, StatusBadge, useApi } from '../components/ui'
 import OrderHistory from '../components/OrderHistory'
+import { AllergenLine } from '../components/Allergens'
 import RateOrder from '../components/RateOrder'
 import NotFound from './NotFound'
 
@@ -141,6 +142,7 @@ export default function OrderDetails() {
                 <div className="muted small">
                   {[optionText(i.options), i.cake_message && `Message: "${i.cake_message}"`, i.notes && `Notes: ${i.notes}`].filter(Boolean).join(' · ')}
                 </div>
+                <AllergenLine allergens={i.allergens} />
               </div>
               <strong>{peso(i.line_total)}</strong>
             </div>
@@ -203,6 +205,7 @@ export default function OrderDetails() {
               {order.contact_phone} · {order.customer_email}
             </p>
             {order.notes && <p className="muted">Notes: {order.notes}</p>}
+            {order.allergy_note && <p className="allergy-warn">Allergy note: {order.allergy_note}</p>}
           </section>
         </div>
       </div>

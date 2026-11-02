@@ -7,6 +7,9 @@ DROP TABLE IF EXISTS order_status_history;
 DROP TABLE IF EXISTS notifications_log;
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS order_item_options;
+DROP TABLE IF EXISTS option_allergens;
+DROP TABLE IF EXISTS product_allergens;
+DROP TABLE IF EXISTS allergens;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS delivery_slots;
@@ -44,6 +47,7 @@ CREATE TABLE users (
     last_zone_id           INT UNSIGNED NULL,
     last_address_street    VARCHAR(255) NULL,
     last_address_landmark  VARCHAR(255) NULL,
+    allergies              VARCHAR(100) NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -82,8 +86,11 @@ CREATE TABLE products (
     name             VARCHAR(150)  NOT NULL,
     slug             VARCHAR(170)  NOT NULL,
     description      TEXT          NULL,
+    ingredients      TEXT          NULL,
     base_price       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     image            VARCHAR(255)  NULL,
+    product_type     ENUM('ready_made','made_to_order') NOT NULL DEFAULT 'made_to_order',
+    stock_qty        INT           NULL,
     lead_time_hours  INT           NOT NULL DEFAULT 0,
     is_customizable  TINYINT(1)    NOT NULL DEFAULT 0,
     is_available     TINYINT(1)    NOT NULL DEFAULT 1,
@@ -112,6 +119,37 @@ CREATE TABLE product_options (
     KEY idx_product_options_product (product_id),
     CONSTRAINT fk_product_options_product FOREIGN KEY (product_id)
         REFERENCES products (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE allergens (
+    id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(50)  NOT NULL,
+    slug        VARCHAR(50)  NOT NULL,
+    sort_order  INT          NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_allergens_slug (slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE product_allergens (
+    product_id   INT UNSIGNED NOT NULL,
+    allergen_id  INT UNSIGNED NOT NULL,
+    PRIMARY KEY (product_id, allergen_id),
+    KEY idx_product_allergens_allergen (allergen_id),
+    CONSTRAINT fk_product_allergens_product FOREIGN KEY (product_id)
+        REFERENCES products (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_product_allergens_allergen FOREIGN KEY (allergen_id)
+        REFERENCES allergens (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE option_allergens (
+    product_option_id  INT UNSIGNED NOT NULL,
+    allergen_id        INT UNSIGNED NOT NULL,
+    PRIMARY KEY (product_option_id, allergen_id),
+    KEY idx_option_allergens_allergen (allergen_id),
+    CONSTRAINT fk_option_allergens_option FOREIGN KEY (product_option_id)
+        REFERENCES product_options (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_option_allergens_allergen FOREIGN KEY (allergen_id)
+        REFERENCES allergens (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE delivery_slots (
@@ -155,7 +193,9 @@ CREATE TABLE orders (
                            'out_for_delivery','completed','cancelled')
                       NOT NULL DEFAULT 'pending_payment',
     payment_status    ENUM('unpaid','paid','failed','refunded') NOT NULL DEFAULT 'unpaid',
+    stock_taken       TINYINT(1)    NOT NULL DEFAULT 0,
     notes             TEXT          NULL,
+    allergy_note      VARCHAR(500)  NULL,
     prepared_by       INT UNSIGNED  NULL,
     prepared_at       DATETIME      NULL,
     cancel_reason     VARCHAR(255)  NULL,
@@ -326,16 +366,17 @@ INSERT INTO categories (id, name, slug, sort_order) VALUES
 (4, 'Breads',       'breads',       4),
 (5, 'Cookies',      'cookies',      5);
 
-INSERT INTO products (id, category_id, name, slug, description, base_price, lead_time_hours, is_customizable, is_available, is_featured) VALUES
-(1, 1, 'Chocolate Dream Cake', 'chocolate-dream-cake', 'Moist chocolate layers with ganache. Needs 48 hours of preparation.', 1450.00, 48, 1, 1, 1),
-(2, 1, 'Ube Cheesecake',       'ube-cheesecake',       'Creamy cheesecake swirled with ube halaya on a graham crust.',        950.00, 48, 1, 1, 1),
-(3, 1, 'Mango Chiffon',        'mango-chiffon',        'Light chiffon layers with fresh Guimaras mango and cream.',           880.00, 48, 1, 1, 0),
-(4, 1, 'Carrot Cake',          'carrot-cake',          'Spiced carrot cake with walnuts and cream cheese frosting.',          1050.00, 48, 1, 1, 0),
-(5, 2, 'Red Velvet Cupcakes (6)', 'red-velvet-cupcakes-6', 'Box of 6 red velvet cupcakes with cream cheese frosting.',         420.00, 24, 0, 1, 1),
-(6, 3, 'Ensaymada Box',        'ensaymada-box',        'Box of 6 soft ensaymada topped with butter, sugar and cheese.',       360.00,  4, 0, 1, 1),
-(7, 3, 'Butter Croissant',     'butter-croissant',     'Flaky, all-butter croissant baked every morning.',                     85.00,  2, 0, 1, 0),
-(8, 4, 'Pandesal (20)',        'pandesal-20',          'Twenty classic pandesal, best eaten warm.',                           120.00,  2, 0, 0, 0),
-(9, 5, 'Choco Chip Cookies (12)', 'choco-chip-cookies-12', 'A dozen chewy chocolate chip cookies.',                           300.00,  4, 0, 1, 0);
+INSERT INTO products (id, category_id, name, slug, description, base_price, product_type, stock_qty, lead_time_hours, is_customizable, is_available, is_featured) VALUES
+(1, 1, 'Chocolate Dream Cake', 'chocolate-dream-cake', 'Moist chocolate layers with ganache. Needs 48 hours of preparation.', 1450.00, 'made_to_order', NULL, 48, 1, 1, 1),
+(2, 1, 'Ube Cheesecake',       'ube-cheesecake',       'A whole 8-inch ube cheesecake from today''s bake, ready to take home.', 950.00, 'ready_made', 4, 1, 0, 1, 1),
+(3, 1, 'Mango Chiffon',        'mango-chiffon',        'Light chiffon layers with fresh Guimaras mango and cream.',           880.00, 'made_to_order', NULL, 48, 1, 1, 0),
+(4, 1, 'Carrot Cake',          'carrot-cake',          'Spiced carrot cake with walnuts and cream cheese frosting.',          1050.00, 'made_to_order', NULL, 48, 1, 1, 0),
+(5, 2, 'Red Velvet Cupcakes (6)', 'red-velvet-cupcakes-6', 'Box of 6 red velvet cupcakes with cream cheese frosting.',         420.00, 'made_to_order', NULL, 24, 0, 1, 1),
+(6, 3, 'Ensaymada Box',        'ensaymada-box',        'Box of 6 soft ensaymada topped with butter, sugar and cheese.',       360.00, 'ready_made', 10, 1, 0, 1, 1),
+(7, 3, 'Butter Croissant',     'butter-croissant',     'Flaky, all-butter croissant baked every morning.',                     85.00, 'ready_made', 24, 1, 0, 1, 0),
+(8, 4, 'Pandesal (20)',        'pandesal-20',          'Twenty classic pandesal, best eaten warm.',                           120.00, 'made_to_order', NULL, 2, 0, 0, 0),
+(9, 5, 'Choco Chip Cookies (12)', 'choco-chip-cookies-12', 'A dozen chewy chocolate chip cookies.',                           300.00, 'made_to_order', NULL, 4, 0, 1, 0),
+(10, 1, 'Custom Ube Cheesecake', 'custom-ube-cheesecake', 'Ube cheesecake baked to order in your size, with your message.',  950.00, 'made_to_order', NULL, 48, 1, 1, 0);
 
 INSERT INTO product_options (product_id, option_group, name, price_add, sort_order)
 SELECT p.id, o.option_group, o.name, o.price_add, o.sort_order
@@ -352,6 +393,54 @@ JOIN (
     UNION ALL SELECT 'frosting', 'Cream cheese', 100.00, 3
 ) o
 WHERE p.is_customizable = 1;
+
+INSERT INTO allergens (id, name, slug, sort_order) VALUES
+(1, 'Milk/dairy',   'dairy',     1),
+(2, 'Egg',          'egg',       2),
+(3, 'Wheat/gluten', 'wheat',     3),
+(4, 'Peanuts',      'peanuts',   4),
+(5, 'Tree nuts',    'tree-nuts', 5),
+(6, 'Soy',          'soy',       6),
+(7, 'Sesame',       'sesame',    7);
+
+UPDATE products SET ingredients = CASE id
+    WHEN 1  THEN 'Flour, sugar, cocoa, eggs, butter, milk, dark chocolate, cream.'
+    WHEN 2  THEN 'Cream cheese, sugar, eggs, ube halaya, graham crackers (wheat), butter.'
+    WHEN 3  THEN 'Flour, sugar, eggs, vegetable oil, fresh mango, whipped cream.'
+    WHEN 4  THEN 'Flour, carrots, walnuts, sugar, eggs, vegetable oil, cinnamon, cream cheese frosting.'
+    WHEN 5  THEN 'Flour, sugar, cocoa, buttermilk, eggs, red food colouring, cream cheese frosting.'
+    WHEN 6  THEN 'Flour, butter, sugar, eggs, milk, yeast, grated cheese.'
+    WHEN 7  THEN 'Flour, butter, milk, sugar, yeast, salt, egg wash.'
+    WHEN 8  THEN 'Flour, sugar, milk, yeast, butter, breadcrumbs, salt.'
+    WHEN 9  THEN 'Flour, butter, brown sugar, eggs, chocolate chips (contains soy lecithin), vanilla.'
+    WHEN 10 THEN 'Cream cheese, sugar, eggs, ube halaya, graham crackers (wheat), butter.'
+END;
+
+INSERT INTO product_allergens (product_id, allergen_id) VALUES
+(1, 1), (1, 2), (1, 3),
+(2, 1), (2, 2), (2, 3),
+(3, 1), (3, 2), (3, 3),
+(4, 1), (4, 2), (4, 3), (4, 5),
+(5, 1), (5, 2), (5, 3),
+(6, 1), (6, 2), (6, 3),
+(7, 1), (7, 2), (7, 3),
+(8, 1), (8, 3),
+(9, 1), (9, 2), (9, 3), (9, 6),
+(10, 1), (10, 2), (10, 3);
+
+INSERT INTO option_allergens (product_option_id, allergen_id)
+SELECT o.id, a.id
+FROM product_options o
+JOIN (
+    SELECT 'Chocolate' AS name, 'soy' AS slug
+    UNION ALL SELECT 'Mocha',        'dairy'
+    UNION ALL SELECT 'Ube',          'dairy'
+    UNION ALL SELECT 'Ganache',      'dairy'
+    UNION ALL SELECT 'Ganache',      'soy'
+    UNION ALL SELECT 'Buttercream',  'dairy'
+    UNION ALL SELECT 'Cream cheese', 'dairy'
+) m ON m.name = o.name
+JOIN allergens a ON a.slug = m.slug;
 
 INSERT INTO delivery_slots (slot_date, start_time, end_time, fulfillment, capacity)
 SELECT d.slot_date, t.start_time, t.end_time, t.fulfillment, t.capacity

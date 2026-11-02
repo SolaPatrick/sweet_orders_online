@@ -1,12 +1,21 @@
 import { Link } from 'react-router-dom'
 import { clock, peso, timeOnly, methodLabel } from '../../lib/format'
 import { Empty, ErrorBox, Loader, StatusBadge, useApi } from '../../components/ui'
+import StockQuickEdit from '../../components/StockQuickEdit'
 
 export default function Dashboard() {
   const { data, loading, error, reload } = useApi('/admin/dashboard')
   if (loading) return <Loader />
   if (error) return <ErrorBox error={error} onRetry={reload} />
-  const { stats, sales_last_7_days: sales, due_today: due, recent_orders: recent, needs_new_slot: needsSlot = [] } = data
+  const {
+    stats,
+    sales_last_7_days: sales,
+    due_today: due,
+    recent_orders: recent,
+    needs_new_slot: needsSlot = [],
+    needs_stock: needsStock = [],
+    ready_made: readyMade = [],
+  } = data
   const max = Math.max(1, ...sales.map((s) => s.total))
 
   return (
@@ -22,6 +31,22 @@ export default function Dashboard() {
           </strong>
           <span>
             {needsSlot.map((o, i) => (
+              <span key={o.id}>
+                {i > 0 && ' · '}
+                <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link> ({o.customer_name})
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {needsStock.length > 0 && (
+        <div className="alert alert-warning stack">
+          <strong>
+            <span className="badge badge-warning">Short on stock</span> {needsStock.length} paid order{needsStock.length > 1 ? 's' : ''} ran out of
+            ready-made stock
+          </strong>
+          <span>
+            {needsStock.map((o, i) => (
               <span key={o.id}>
                 {i > 0 && ' · '}
                 <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link> ({o.customer_name})
@@ -57,6 +82,30 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {readyMade.length > 0 && (
+        <section className="card stack">
+          <div>
+            <h3>Ready-made stock</h3>
+            <span className="muted small">
+              Set what is on the shelf each morning. Stock goes down when an order is paid and back up when a paid order is cancelled.
+            </span>
+          </div>
+          <div className="stock-list">
+            {readyMade.map((p) => (
+              <div key={p.id} className="stock-row">
+                <div>
+                  <strong>{p.name}</strong>
+                  <div className="muted small">
+                    {!p.is_available ? 'Hidden (not available)' : p.stock_qty > 0 ? `${p.stock_qty} left` : 'Sold out today'}
+                  </div>
+                </div>
+                <StockQuickEdit key={`${p.id}-${p.stock_qty}`} product={p} onSaved={reload} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="two-col wide-left">
         <section>
           <h3>Due today</h3>
@@ -81,6 +130,12 @@ export default function Dashboard() {
                       <td>
                         <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link>
                         {o.needs_new_slot && <span className="badge badge-warning">New slot</span>}
+                        {o.stock_short && <span className="badge badge-warning">Short on stock</span>}
+                        {o.allergy_note && (
+                          <span className="badge badge-cancelled" title={o.allergy_note}>
+                            Allergy note
+                          </span>
+                        )}
                       </td>
                       <td>{o.customer_name}</td>
                       <td>{o.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</td>

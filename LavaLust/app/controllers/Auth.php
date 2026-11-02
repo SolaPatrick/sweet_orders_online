@@ -142,11 +142,21 @@ class Auth extends MY_Api_Controller
             $this->api->respond(['message' => 'Password updated.']);
         }
 
-        $this->validate($in, ['name|Name' => 'required|max_length[100]', 'phone|Mobile number' => ['required', self::MOBILE_PATTERN]]);
-        $this->User_model->update($user['id'], [
+        $this->validate($in, [
+            'name|Name'           => 'required|max_length[100]',
+            'phone|Mobile number' => ['required', self::MOBILE_PATTERN],
+            'allergies|Allergies' => 'pattern[array]',
+        ]);
+        $data = [
             'name'  => $in['name'],
             'phone' => normalize_phone($in['phone']),
-        ]);
+        ];
+        if (array_key_exists('allergies', $in)) {
+            $this->call->model('Allergen_model');
+            $ids = $this->Allergen_model->clean_ids((array) $in['allergies']);
+            $data['allergies'] = $ids ? implode(',', $ids) : null;
+        }
+        $this->User_model->update($user['id'], $data);
         $this->api->respond(['message' => 'Profile saved.', 'user' => $this->User_model->public_fields($this->User_model->find($user['id']))]);
     }
 }

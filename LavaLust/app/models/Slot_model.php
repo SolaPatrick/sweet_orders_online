@@ -93,6 +93,48 @@ class Slot_model extends Model
         return array_values($days);
     }
 
+    public function calendar(string $from, string $to, ?string $fulfillment, int $earliest): array
+    {
+        $this->db->table($this->table)
+            ->select('slot_date, start_time, capacity, booked_count, is_blocked')
+            ->between('slot_date', $from, $to);
+        if ($fulfillment) {
+            $this->db->where('fulfillment', $fulfillment);
+        }
+        $by_date = [];
+        foreach ($this->db->get_all() as $s) {
+            $by_date[$s['slot_date']][] = $s;
+        }
+
+        $days = [];
+        $date = new DateTime($from);
+        $end = new DateTime($to);
+        while ($date <= $end) {
+            $key = $date->format('Y-m-d');
+            $open = 0;
+            $later = 0;
+            $bookable = 0;
+            $places = 0;
+            foreach ($by_date[$key] ?? [] as $s) {
+                if ((int) $s['is_blocked']) {
+                    continue;
+                }
+                $open++;
+                if (strtotime($key . ' ' . $s['start_time']) < $earliest) {
+                    continue;
+                }
+                $later++;
+                $left = max((int) $s['capacity'] - (int) $s['booked_count'], 0);
+                $bookable += (int) ($left > 0);
+                $places += $left;
+            }
+            $status = !$open ? 'closed' : (!$later ? 'too_soon' : ($bookable ? 'open' : 'full'));
+            $days[] = ['date' => $key, 'status' => $status, 'available_slots' => $bookable, 'places_left' => $places];
+            $date->modify('+1 day');
+        }
+        return $days;
+    }
+
     public function blocked_dates(string $from): array
     {
         return $this->db->table($this->table)

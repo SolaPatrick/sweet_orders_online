@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../../api/client'
 import { peso } from '../../lib/format'
+import { byName, byPlace, matchesPlace } from '../../lib/places'
 import { ConfirmDialog, Empty, ErrorBox, Field, Loader, Notice, Toggle, useApi } from '../../components/ui'
 
 const BLANK = { name: '', city: '', fee: '', is_active: true }
@@ -14,6 +15,10 @@ export default function DeliveryZones() {
   const [actionError, setActionError] = useState(null)
   const [toDelete, setToDelete] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [find, setFind] = useState('')
+
+  const zones = [...(data?.data || [])].sort(byPlace)
+  const shownZones = zones.filter((z) => matchesPlace(z, find))
 
   const submit = async (e) => {
     e.preventDefault()
@@ -77,50 +82,59 @@ export default function DeliveryZones() {
             <Loader />
           ) : error ? (
             <ErrorBox error={error} onRetry={reload} />
-          ) : data.data.length === 0 ? (
+          ) : zones.length === 0 ? (
             <Empty title="No delivery areas yet.">Add them by hand or pick barangays from the PSGC list below.</Empty>
           ) : (
-            <div className="table-wrap card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Barangay / area</th>
-                    <th>City</th>
-                    <th>Fee</th>
-                    <th>Active</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.data.map((z) => (
-                    <tr key={z.id}>
-                      <td>{z.name}</td>
-                      <td>{z.city}</td>
-                      <td>{peso(z.fee)}</td>
-                      <td>
-                        <Toggle checked={!!z.is_active} onChange={() => toggleActive(z)} />
-                      </td>
-                      <td className="right nowrap">
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={() => {
-                            setEditing(z.id)
-                            setErrors({})
-                            setForm({ name: z.name, city: z.city, fee: String(z.fee), is_active: !!z.is_active })
-                          }}
-                        >
-                          Edit
-                        </button>{' '}
-                        ·{' '}
-                        <button type="button" className="link-button danger" onClick={() => setToDelete(z)}>
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="stack">
+              <Field label={`Search ${zones.length} areas`}>
+                <input type="search" value={find} placeholder="Barangay or city, e.g. pob" onChange={(e) => setFind(e.target.value)} />
+              </Field>
+              {shownZones.length === 0 ? (
+                <p className="muted">No area matches “{find}”.</p>
+              ) : (
+                <div className="table-wrap card">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Barangay / area</th>
+                        <th>City</th>
+                        <th>Fee</th>
+                        <th>Active</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownZones.map((z) => (
+                        <tr key={z.id}>
+                          <td>{z.name}</td>
+                          <td>{z.city}</td>
+                          <td>{peso(z.fee)}</td>
+                          <td>
+                            <Toggle checked={!!z.is_active} onChange={() => toggleActive(z)} />
+                          </td>
+                          <td className="right nowrap">
+                            <button
+                              type="button"
+                              className="link-button"
+                              onClick={() => {
+                                setEditing(z.id)
+                                setErrors({})
+                                setForm({ name: z.name, city: z.city, fee: String(z.fee), is_active: !!z.is_active })
+                              }}
+                            >
+                              Edit
+                            </button>{' '}
+                            ·{' '}
+                            <button type="button" className="link-button danger" onClick={() => setToDelete(z)}>
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -183,6 +197,7 @@ function PsgcPicker({ onAdded }) {
   const [barangays, setBarangays] = useState(null)
   const [picked, setPicked] = useState({})
   const [allFee, setAllFee] = useState('')
+  const [find, setFind] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -204,9 +219,10 @@ function PsgcPicker({ onAdded }) {
     setError(null)
     setCity(c)
     setPicked({})
+    setFind('')
     setBarangays(null)
     try {
-      setBarangays((await api(`/admin/psgc/cities/${c.code}/barangays`)).data)
+      setBarangays([...(await api(`/admin/psgc/cities/${c.code}/barangays`)).data].sort(byName))
     } catch (err) {
       setError(err)
       setCity(null)
@@ -225,6 +241,7 @@ function PsgcPicker({ onAdded }) {
   const applyAll = () => setPicked((p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, { ...v, fee: allFee }])))
 
   const chosen = Object.values(picked)
+  const shownBarangays = (barangays || []).filter((b) => matchesPlace(b, find))
   const missingFee = chosen.some((z) => z.fee === '' || Number(z.fee) < 0)
 
   const save = async () => {
@@ -265,7 +282,7 @@ function PsgcPicker({ onAdded }) {
           <p className="muted">No city or municipality matches “{q}”.</p>
         ) : (
           <div className="chips wrap">
-            {cities.map((c) => (
+            {[...cities].sort(byName).map((c) => (
               <button key={c.code} type="button" className="chip" disabled={busy} onClick={() => chooseCity(c)}>
                 {c.name}
                 {c.province ? `, ${c.province}` : ''}
@@ -290,6 +307,9 @@ function PsgcPicker({ onAdded }) {
           ) : (
             <>
               <div className="filter-bar">
+                <Field label={`Search ${barangays.length} barangays`} className="grow">
+                  <input type="search" value={find} placeholder="e.g. pob" onChange={(e) => setFind(e.target.value)} />
+                </Field>
                 <Field label="One fee for all ticked (₱)">
                   <input type="number" min="0" step="1" value={allFee} onChange={(e) => setAllFee(e.target.value)} />
                 </Field>
@@ -299,13 +319,20 @@ function PsgcPicker({ onAdded }) {
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => setPicked(Object.fromEntries(barangays.map((b) => [b.code, picked[b.code] || { name: b.name, psgc_code: b.code, fee: allFee }])))}
+                  disabled={!shownBarangays.length}
+                  onClick={() =>
+                    setPicked((p) => ({
+                      ...p,
+                      ...Object.fromEntries(shownBarangays.map((b) => [b.code, p[b.code] || { name: b.name, psgc_code: b.code, fee: allFee }])),
+                    }))
+                  }
                 >
-                  Tick all {barangays.length}
+                  {find.trim() ? `Tick ${shownBarangays.length} shown` : `Tick all ${barangays.length}`}
                 </button>
               </div>
+              {shownBarangays.length === 0 && <p className="muted">No barangay matches “{find}”.</p>}
               <div className="barangay-grid">
-                {barangays.map((b) => (
+                {shownBarangays.map((b) => (
                   <div key={b.code} className={`barangay ${picked[b.code] ? 'on' : ''}`}>
                     <label className="check">
                       <input type="checkbox" checked={!!picked[b.code]} onChange={(e) => toggle(b, e.target.checked)} />

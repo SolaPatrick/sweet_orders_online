@@ -23,14 +23,14 @@ export function CartProvider({ children }) {
     setItems((list) => {
       const found = list.find((i) => i.key === key)
       if (found) {
-        return list.map((i) => (i.key === key ? { ...i, quantity: Math.min(50, i.quantity + item.quantity) } : i))
+        return list.map((i) => (i.key === key ? { ...i, ...item, quantity: Math.min(item.max_qty ?? 50, i.quantity + item.quantity) } : i))
       }
-      return [...list, { ...item, key }]
+      return [...list, { ...item, key, quantity: Math.min(item.max_qty ?? 50, item.quantity) }]
     })
   }, [])
 
   const setQuantity = useCallback((key, quantity) => {
-    setItems((list) => list.map((i) => (i.key === key ? { ...i, quantity: Math.max(1, Math.min(50, quantity)) } : i)))
+    setItems((list) => list.map((i) => (i.key === key ? { ...i, quantity: Math.max(1, Math.min(i.max_qty ?? 50, quantity)) } : i)))
   }, [])
 
   const remove = useCallback((key) => setItems((list) => list.filter((i) => i.key !== key)), [])
