@@ -415,9 +415,9 @@
 }
 .footer-stripes {
   position: absolute;
-  top: 0;
+  top: -200px;
   right: 4%;
-  bottom: 0;
+  bottom: -200px;
   width: min(220px, 30vw);
   opacity: 0.9;
 }
@@ -427,25 +427,31 @@
 }
 .stripes span {
   flex: 1;
+  translate: 0 calc((var(--progress, 0.5) - 0.5) * var(--lift, 0px));
   transform-origin: top;
   animation: stripe-drop 1.2s var(--ease) both;
 }
 .stripes span:nth-child(1) {
+  --lift: 60px;
   background: var(--butter);
 }
 .stripes span:nth-child(2) {
+  --lift: 130px;
   background: var(--caramel);
   animation-delay: 0.08s;
 }
 .stripes span:nth-child(3) {
+  --lift: 200px;
   background: var(--cherry);
   animation-delay: 0.16s;
 }
 .stripes span:nth-child(4) {
+  --lift: 270px;
   background: var(--berry);
   animation-delay: 0.24s;
 }
 .stripes span:nth-child(5) {
+  --lift: 340px;
   background: var(--pink);
   animation-delay: 0.32s;
 }
@@ -519,6 +525,9 @@
 .hero-x-inner {
   position: relative;
   z-index: 2;
+  transform: translate3d(calc(var(--mx, 0) * -10px), calc(var(--sy, 0) * 0.32px + var(--my, 0) * -6px), 0);
+  opacity: calc(1 - var(--sy, 0) / 650);
+  will-change: transform, opacity;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -578,10 +587,17 @@
   inset: 0;
   pointer-events: none;
 }
-.hero-float {
+.hero-float-wrap {
   position: absolute;
   width: clamp(110px, 17vw, 230px);
   aspect-ratio: 1;
+  transform: translate3d(calc(var(--mx, 0) * var(--d) * 1px), calc(var(--my, 0) * var(--d) * 0.7px + var(--sy, 0) * var(--d) * 0.012px), 0);
+  will-change: transform;
+}
+.hero-float {
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid var(--cocoa);
@@ -594,29 +610,95 @@
   height: 100%;
   object-fit: cover;
 }
-.hero-float.f0 {
+.hero-float-wrap.f0 {
   top: 14%;
   left: -3%;
   --r: -10deg;
-  animation-delay: 0.3s, 1.4s;
+  --d: 22;
 }
-.hero-float.f1 {
+.hero-float-wrap.f1 {
   top: 10%;
   right: -2%;
   --r: 9deg;
-  animation-delay: 0.45s, 1.4s;
+  --d: -18;
 }
-.hero-float.f2 {
+.hero-float-wrap.f2 {
   bottom: -6%;
   left: 6%;
   --r: 7deg;
-  animation-delay: 0.6s, 2.2s;
+  --d: -30;
 }
-.hero-float.f3 {
+.hero-float-wrap.f3 {
   bottom: -4%;
   right: 5%;
   --r: -8deg;
+  --d: 28;
+}
+.f0 .hero-float {
+  animation-delay: 0.3s, 1.4s;
+}
+.f1 .hero-float {
+  animation-delay: 0.45s, 1.4s;
+}
+.f2 .hero-float {
+  animation-delay: 0.6s, 2.2s;
+}
+.f3 .hero-float {
   animation-delay: 0.75s, 2.6s;
+}
+
+.ingredients {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.ing {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+}
+.ing-move {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: translate3d(calc(var(--mx, 0) * var(--d) * 1px), calc(var(--my, 0) * var(--d) * 0.8px + var(--sy, 0) * var(--d) * 0.014px), 0)
+    rotate(calc(var(--mx, 0) * var(--d) * 0.35deg + var(--sy, 0) * var(--d) * 0.004deg));
+  will-change: transform;
+}
+.ing-bob {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: ing-in 0.9s var(--ease) both, sway 7s ease-in-out infinite alternate;
+  animation-delay: calc(0.5s + var(--i) * 60ms), calc(var(--i) * -0.7s);
+}
+.ing svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(3px 4px 0 rgba(46, 33, 27, 0.18));
+}
+.ing-sm svg {
+  filter: none;
+}
+@keyframes ing-in {
+  from {
+    opacity: 0;
+    scale: 0.2;
+  }
+}
+@keyframes sway {
+  0% {
+    transform: translateY(-6px) rotate(calc(var(--r) - 7deg));
+  }
+  100% {
+    transform: translateY(8px) rotate(calc(var(--r) + 7deg));
+  }
 }
 @keyframes float-in {
   from {
@@ -761,6 +843,7 @@
   color: var(--cream);
   opacity: 0.35;
   transform: translate(calc(-35% + var(--progress, 0.5) * 30%), -50%);
+  translate: calc(var(--mx, 0) * -30px) calc(var(--my, 0) * -14px);
   pointer-events: none;
   will-change: transform;
 }
@@ -773,6 +856,7 @@
 }
 .show-tag {
   justify-self: end;
+  translate: calc(var(--mx, 0) * -12px) calc(var(--my, 0) * -8px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -807,7 +891,8 @@
   border: 3px solid var(--cocoa);
   background: var(--cream);
   box-shadow: 10px 10px 0 var(--cocoa);
-  transform: rotate(calc((var(--progress, 0.5) - 0.5) * -14deg)) translateY(calc((var(--progress, 0.5) - 0.5) * -60px));
+  transform: rotate(calc((var(--progress, 0.5) - 0.5) * -14deg + var(--mx, 0) * 4deg)) translateY(calc((var(--progress, 0.5) - 0.5) * -60px));
+  translate: calc(var(--mx, 0) * 18px) calc(var(--my, 0) * 12px);
   transition: box-shadow 0.4s var(--ease);
   will-change: transform;
 }
@@ -825,6 +910,7 @@
 }
 .show-cta {
   justify-self: start;
+  translate: calc(var(--mx, 0) * 30px) calc(var(--my, 0) * 20px);
   text-decoration: none;
   color: inherit;
 }
@@ -869,6 +955,11 @@
   background: var(--cream-2);
   padding: 80px 0;
 }
+.parallax {
+  transform: translate3d(0, calc((var(--progress, 0.5) - 0.5) * var(--speed, 60) * -1px), 0);
+  will-change: transform;
+}
+
 .how-inner {
   position: relative;
   display: flex;
@@ -878,8 +969,8 @@
 }
 .how-stripes {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -200px;
+  bottom: -200px;
   right: 0;
   width: min(300px, 26vw);
 }
@@ -1607,14 +1698,25 @@
   .hero-x {
     padding: 140px 0 120px;
   }
-  .hero-float {
+  .hero-float-wrap {
     width: 96px;
   }
-  .hero-float.f0 {
+  .hero-float-wrap.f0 {
     top: 11%;
   }
-  .hero-float.f1 {
+  .hero-float-wrap.f1 {
     top: 9%;
+  }
+  .ing {
+    width: calc(var(--s) * 0.6);
+    height: calc(var(--s) * 0.6);
+    margin: calc(var(--s) * -0.3) 0 0 calc(var(--s) * -0.3);
+  }
+  .ing:nth-child(7),
+  .ing:nth-child(8),
+  .ing:nth-child(11),
+  .ing:nth-child(12) {
+    display: none;
   }
   .steps {
     grid-template-columns: minmax(0, 1fr);

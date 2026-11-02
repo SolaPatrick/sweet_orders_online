@@ -1,5 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { prefersReducedMotion } from '../lib/motion'
+import { prefersReducedMotion, useScrollProgress } from '../lib/motion'
+
+export function Parallax({ speed = 60, className = '', children }) {
+  const ref = useRef(null)
+  useScrollProgress(ref)
+  return (
+    <div ref={ref} className={`parallax ${className}`} style={{ '--speed': speed }}>
+      {children}
+    </div>
+  )
+}
 
 export function Reveal({ as: Tag = 'div', className = '', delay = 0, children, ...rest }) {
   const ref = useRef(null)

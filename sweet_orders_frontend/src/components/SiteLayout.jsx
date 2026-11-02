@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 import { Preloader, Stripes } from './Motion'
+import { useScrollProgress } from '../lib/motion'
 
 function AccountMenu() {
   const { user, isStaff, logout } = useAuth()
@@ -47,6 +48,8 @@ export default function SiteLayout() {
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   const [navPath, setNavPath] = useState(location.pathname)
+  const footerRef = useRef(null)
+  useScrollProgress(footerRef)
 
   if (navPath !== location.pathname) {
     setNavPath(location.pathname)
@@ -94,7 +97,7 @@ export default function SiteLayout() {
           <Outlet />
         </div>
       </main>
-      <footer className="site-footer">
+      <footer ref={footerRef} className="site-footer">
         <Stripes className="footer-stripes" />
         <div className="container footer-top">
           <p className="footer-word">Clayanna's</p>

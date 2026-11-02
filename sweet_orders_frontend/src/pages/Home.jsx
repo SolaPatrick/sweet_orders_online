@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ErrorBox, Loader, useApi } from '../components/ui'
-import { Marquee, Reveal, SpinBadge, Stripes } from '../components/Motion'
-import { useScrollProgress } from '../lib/motion'
+import { Marquee, Parallax, Reveal, SpinBadge, Stripes } from '../components/Motion'
+import Ingredients from '../components/Ingredients'
+import { usePointerParallax, useScrollProgress } from '../lib/motion'
 import { peso } from '../lib/format'
 import heroImg from '../assets/hero.svg'
 
@@ -12,6 +13,7 @@ const TILE_TONES = ['pink', 'butter', 'mint', 'caramel', 'cherry', 'berry']
 function ShowPanel({ product, index, onActive }) {
   const ref = useRef(null)
   useScrollProgress(ref)
+  usePointerParallax(ref)
 
   useEffect(() => {
     const el = ref.current
@@ -71,17 +73,25 @@ export default function Home() {
   const categories = useApi('/categories')
   const featured = useApi('/products', { featured: 1, per_page: 4 })
   const photos = (featured.data?.data || []).map((p) => p.image_url).filter(Boolean)
+  const heroRef = useRef(null)
+  const howRef = useRef(null)
+  useScrollProgress(heroRef)
+  usePointerParallax(heroRef)
+  useScrollProgress(howRef)
 
   return (
     <div className="home">
-      <section className="hero-x">
+      <section ref={heroRef} className="hero-x">
         <div className="hero-floats" aria-hidden="true">
           {[0, 1, 2, 3].map((i) => (
-            <span key={i} className={`hero-float f${i}`}>
-              <img src={photos[i % (photos.length || 1)] || heroImg} alt="" />
+            <span key={i} className={`hero-float-wrap f${i}`}>
+              <span className="hero-float">
+                <img src={photos[i % (photos.length || 1)] || heroImg} alt="" />
+              </span>
             </span>
           ))}
         </div>
+        <Ingredients />
         <div className="container hero-x-inner">
           <p className="eyebrow rise" style={{ '--delay': '100ms' }}>
             Clayanna's Café · Baked to order
@@ -111,11 +121,11 @@ export default function Home() {
       <Marquee items={['Baked fresh daily', 'Pickup or delivery', 'Custom cakes', 'Pay with GCash or card', 'Made with love']} />
 
       <section className="container home-sec">
-        <div className="section-head">
+        <Parallax speed={50} className="section-head">
           <Reveal as="h2" className="display-md">
             Shop by category
           </Reveal>
-        </div>
+        </Parallax>
         {categories.loading ? (
           <Loader />
         ) : (
@@ -147,14 +157,16 @@ export default function Home() {
         <Showcase products={featured.data.data} />
       ) : null}
 
-      <section id="how" className="how">
+      <section ref={howRef} id="how" className="how">
         <Stripes className="how-stripes" />
         <div className="container how-inner">
-          <Reveal as="h2" className="display-lg">
-            How ordering
-            <br />
-            works
-          </Reveal>
+          <Parallax speed={70}>
+            <Reveal as="h2" className="display-lg">
+              How ordering
+              <br />
+              works
+            </Reveal>
+          </Parallax>
           <Reveal className="sticker" delay={200}>
             Easy as pie
           </Reveal>
