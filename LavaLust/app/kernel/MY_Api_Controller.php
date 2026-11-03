@@ -22,7 +22,7 @@ class MY_Api_Controller extends Controller
     {
         $this->security_headers->apply_api();
         $this->call->library('api');
-        foreach ($_GET as $key => $value) {
+        foreach ($this->request->get() as $key => $value) {
             if (is_array($value)) {
                 $this->api->respond_error('The value of "' . mb_substr((string) $key, 0, 40) . '" in the address is not valid.', 400);
             }
@@ -35,11 +35,12 @@ class MY_Api_Controller extends Controller
 
     protected function client_ip(): string
     {
-        $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
-        if (!empty(config_item('security_headers')['trust_proxy']) && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $parts = array_values(array_filter(array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']))));
+        $remote = (string) $this->request->ip_address();
+        $forwarded = (string) $this->request->header('X-Forwarded-For');
+        if (!empty(config_item('security_headers')['trust_proxy']) && $forwarded !== '') {
+            $parts = array_values(array_filter(array_map('trim', explode(',', $forwarded))));
             $last = end($parts);
-            if ($last !== false && filter_var($last, FILTER_VALIDATE_IP)) {
+            if ($last !== false && $this->request->valid_ip($last)) {
                 return $last;
             }
         }

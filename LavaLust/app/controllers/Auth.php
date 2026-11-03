@@ -87,7 +87,7 @@ class Auth extends MY_Api_Controller
 
         $this->call->model(['User_model', 'Login_attempt_model']);
         $email = strtolower(trim((string) $in['email']));
-        $agent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $agent = (string) $this->request->user_agent();
         $user = $this->User_model->find_by_email($email);
         $locked = $this->Login_attempt_model->locked_until($email);
         if ($locked) {
