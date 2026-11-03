@@ -36,6 +36,7 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->get('/orders/{id}', 'Orders::show')->where_number('id');
         $router->post('/orders/{id}/pay', 'Orders::pay')->where_number('id');
         $router->post('/orders/{id}/cancel', 'Orders::cancel')->where_number('id');
+        $router->post('/orders/{id}/reschedule', 'Orders::reschedule')->where_number('id');
         $router->post('/orders/{id}/reviews', 'Reviews::create')->where_number('id');
         $router->put('/reviews/{id}', 'Reviews::update')->where_number('id');
     });
@@ -75,6 +76,8 @@ $router->group(['prefix' => '/api'], function ($router) {
 
         $router->get('/delivery-zones', 'Zones::admin_index');
         $router->get('/addons', 'Admin::addons');
+        $router->get('/health', 'Health::details');
+        $router->get('/login-attempts', 'Admin::login_attempts');
         $router->post('/addons', 'Admin::addon_create');
         $router->put('/addons/{id}', 'Admin::addon_update')->where_number('id');
         $router->post('/delivery-zones', 'Zones::create');

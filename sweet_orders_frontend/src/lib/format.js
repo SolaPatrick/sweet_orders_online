@@ -29,6 +29,11 @@ export function dateTime(value) {
     : ''
 }
 
+export function dayTime(value) {
+  const d = toDate(value)
+  return d ? d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
+}
+
 export function timeOnly(value) {
   const d = toDate(value)
   return d ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''

@@ -43,6 +43,7 @@ class Admin extends MY_Api_Controller
             'recent_orders'     => $recent,
             'needs_new_slot'    => $this->Order_model->needing_new_slot(),
             'needs_stock'       => $this->Order_model->needing_stock(),
+            'refunds_due'       => $this->Order_model->refunds_due(),
             'ready_made'        => array_map(function ($p) {
                 return ['id' => $p['id'], 'name' => $p['name'], 'stock_qty' => $p['stock_qty'], 'is_available' => $p['is_available']];
             }, $this->Product_model->search(['type' => 'ready_made', 'sort' => 'name'])),
@@ -414,7 +415,8 @@ class Admin extends MY_Api_Controller
             try {
                 $image = $this->cloudinary->upload($tmp);
             } catch (RuntimeException $e) {
-                $this->api->respond_error('The photo could not be saved: ' . $e->getMessage(), 502);
+                $this->logger->log('error', 'Upload', 'Product photo upload failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+                $this->api->respond_error('The photo could not be saved right now. Please try again in a few minutes.', 502);
             } finally {
                 @unlink($tmp);
             }
@@ -546,6 +548,21 @@ class Admin extends MY_Api_Controller
         }
         $allergens = array_key_exists('allergen_ids', $in) ? (array) $in['allergen_ids'] : null;
         return [$data, $options, $ready || array_key_exists('options', $in), $allergens];
+    }
+
+    public function login_attempts()
+    {
+        $this->api->require_method('GET');
+        $q = $this->api->get_query_params();
+        $failed = $this->request->boolean('failed');
+        $search = trim((string) ($q['q'] ?? ''));
+        $this->call->model('Login_attempt_model');
+        $page = $this->paginate($this->Login_attempt_model->count_recent($failed, $search), 50);
+        $this->api->respond([
+            'data'    => $this->Login_attempt_model->recent($failed, $search, $page['per_page'], $page['offset']),
+            'meta'    => $this->page_meta($page),
+            'summary' => ['failed_last_24h' => $this->Login_attempt_model->failed_since(date('Y-m-d H:i:s', strtotime('-24 hours')))],
+        ]);
     }
 
     public function addons()

@@ -14,6 +14,7 @@ class Notifier
         'ready'             => ['Order {number} is ready for pickup', "Hi {name}, your order {number} is ready for pickup at Clayanna's Café ({schedule}).{pickup}"],
         'out_for_delivery'  => ['Order {number} is on the way', "Hi {name}, your order {number} is out for delivery and will arrive {schedule}."],
         'completed'         => ['Order {number} completed', "Hi {name}, your order {number} is complete. Thank you for ordering from Clayanna's Café! Tell us how it was: {review_url}"],
+        'rescheduled'       => ['Order {number} moved to a new time', "Hi {name}, your order {number} is now set for {schedule}. Orders can be moved online only once; contact us if you need another change."],
         'cancelled'         => ['Order {number} cancelled', "Hi {name}, your order {number} has been cancelled. Contact us if you have questions."],
         'refunded'          => ['Refund for order {number}', "Hi {name}, we refunded {refund} for your cancelled order {number}. Reference: {refund_reference}. It may take a few days to show in your account."],
     ];

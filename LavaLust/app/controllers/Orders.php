@@ -343,18 +343,148 @@ class Orders extends MY_Api_Controller
     {
         $this->api->require_method('POST');
         $order = $this->own_order((int) $id);
-        if (!in_array($order['status'], ['pending_payment', 'awaiting_cash'], true) || $order['payment_status'] === 'paid') {
-            $this->api->respond_error('Only unpaid orders can be cancelled here. Please contact the café.', 409);
+        $in = $this->api->body();
+        $this->validate($in, ['reason|Reason' => 'max_length[200]']);
+        $unpaid_online = $order['status'] === 'pending_payment' && $order['payment_status'] !== 'paid';
+        if (!$unpaid_online && !$order['can_self_cancel']) {
+            $this->api->respond_error($this->change_closed_message($order), 409);
         }
+        $refund = $order['payment_status'] === 'paid';
+        $reason = trim((string) ($in['reason'] ?? ''));
+        $note = 'Cancelled by the customer' . ($reason !== '' ? ": {$reason}" : '') . ($refund ? ' (refund to send)' : '');
+
         $this->call->model(['Slot_model', 'Payment_model', 'Product_model']);
         $this->db->transaction();
-        $this->Order_model->change_status($order, 'cancelled', $this->user()['id'], 'Cancelled by the customer');
+        $locked = $this->db->raw('SELECT status, slot_id FROM orders WHERE id = ? FOR UPDATE', [(int) $id])->fetch();
+        if ($locked['status'] !== $order['status'] || (int) $locked['slot_id'] !== $order['slot_id']) {
+            $this->db->roll_back();
+            $this->api->respond_error('This order was just updated. Please refresh the page and try again.', 409);
+        }
+        $this->Order_model->change_status($order, 'cancelled', $this->user()['id'], $note);
         $this->Slot_model->release_one((int) $order['slot_id']);
         $this->Payment_model->expire_pending((int) $id);
         $this->Product_model->return_stock((int) $id);
         $this->db->commit();
+
         $this->notify_order((int) $id, 'cancelled');
-        $this->api->respond(['message' => 'Order cancelled.', 'data' => $this->Order_model->detail((int) $id)]);
+        if (!$unpaid_online) {
+            $this->alert_cafe_change((int) $id, 'cancelled', $refund
+                ? 'The customer cancelled this paid order online. Please send the refund through the original payment method, then record it on the order page.'
+                : 'The customer cancelled this order online. No payment was made, so no refund is needed.');
+        }
+        $this->api->respond([
+            'message' => $refund
+                ? 'Order cancelled. The café will send your refund of PHP ' . number_format($order['total'], 2) . ' back through your original payment method.'
+                : 'Order cancelled.',
+            'data'    => $this->Order_model->detail((int) $id),
+        ]);
+    }
+
+    public function reschedule($id)
+    {
+        $this->api->require_method('POST');
+        $order = $this->own_order((int) $id);
+        $in = $this->api->body();
+        $this->validate($in, ['slot_id|Time slot' => 'required|pattern[int]']);
+        if (!$order['can_self_reschedule']) {
+            $this->api->respond_error($this->change_closed_message($order), 409);
+        }
+
+        $this->call->model(['Slot_model', 'Product_model']);
+        $slot = $this->Slot_model->find((int) $in['slot_id']);
+        if (!$slot || $slot['fulfillment'] !== $order['fulfillment'] || (int) $slot['is_blocked']) {
+            $this->fail_validation(['slot_id' => 'Please choose an open ' . $order['fulfillment'] . ' time slot.']);
+        }
+        if ((int) $slot['id'] === $order['slot_id']) {
+            $this->fail_validation(['slot_id' => 'That is already your time slot.']);
+        }
+        $qty = [];
+        foreach ($order['items'] as $item) {
+            if ($item['product_id'] !== null) {
+                $qty[$item['product_id']] = ($qty[$item['product_id']] ?? 0) + $item['quantity'];
+            }
+        }
+        $slowest = $this->Product_model->slowest(array_keys($qty));
+        $lead = (int) ($slowest['lead_time_hours'] ?? 0);
+        if (strtotime($slot['slot_date'] . ' ' . $slot['start_time']) < time() + $lead * 3600) {
+            $this->fail_validation(['slot_id' => "That time is too soon. Your {$slowest['name']} needs {$lead} hours."]);
+        }
+        $day = date('D, M j', strtotime($slot['slot_date']));
+        foreach ($qty as $product_id => $n) {
+            $p = $this->Product_model->detail((int) $product_id);
+            if (!$p || $p['product_type'] === 'ready_made') {
+                continue;
+            }
+            if ($p['sold_out_date'] === $slot['slot_date']) {
+                $this->fail_validation(['slot_id' => "{$p['name']} is sold out for {$day}. Please choose another day."]);
+            }
+            if ($p['daily_limit'] !== null) {
+                $own = $order['slot_date'] === $slot['slot_date'] ? $n : 0;
+                $left = $p['daily_limit'] - $this->Product_model->sold_on((int) $product_id, $slot['slot_date']) + $own;
+                if ($n > $left) {
+                    $this->fail_validation(['slot_id' => "Not enough {$p['name']} left for {$day}. Please choose another day."]);
+                }
+            }
+        }
+
+        $from = date('D M j, g:i A', strtotime($order['slot_date'] . ' ' . $order['start_time']));
+        $to = date('D M j, g:i A', strtotime($slot['slot_date'] . ' ' . $slot['start_time']));
+        $this->db->transaction();
+        $locked = $this->db->raw('SELECT status, slot_id, reschedule_count FROM orders WHERE id = ? FOR UPDATE', [(int) $id])->fetch();
+        if ($locked['status'] !== $order['status'] || (int) $locked['slot_id'] !== $order['slot_id'] || (int) $locked['reschedule_count'] >= Order_model::MAX_RESCHEDULES) {
+            $this->db->roll_back();
+            $this->api->respond_error('This order was just updated. Please refresh the page and try again.', 409);
+        }
+        if (!$this->Slot_model->book_one((int) $slot['id'])) {
+            $this->db->roll_back();
+            $this->response->send_json_error('That time slot just filled up or was closed. Please pick another one.', 409, ['errors' => ['slot_id' => 'This slot is full or closed.']]);
+            exit;
+        }
+        $this->Slot_model->release_one($order['slot_id']);
+        $this->db->table('orders')->where('id', (int) $id)->update([
+            'slot_id'          => (int) $slot['id'],
+            'reschedule_count' => (int) $locked['reschedule_count'] + 1,
+        ]);
+        $this->Order_model->add_history((int) $id, $order['status'], $order['status'], $this->user()['id'], "Rescheduled by the customer from {$from} to {$to}");
+        $this->db->commit();
+
+        $this->notify_order((int) $id, 'rescheduled');
+        $this->alert_cafe_change((int) $id, 'moved', "The customer moved this order from {$from} to {$to}.");
+        $this->api->respond(['message' => "Your order is now set for {$to}.", 'data' => $this->Order_model->detail((int) $id)]);
+    }
+
+    private function change_closed_message(array $order): string
+    {
+        $contact = 'Please contact the café.';
+        if (in_array($order['status'], ['preparing', 'ready', 'out_for_delivery'], true)) {
+            return "This order is already being prepared, so it can't be changed online. {$contact}";
+        }
+        if (in_array($order['status'], ['completed', 'cancelled'], true)) {
+            return 'This order is already ' . $order['status'] . '.';
+        }
+        if ($order['needs_new_slot']) {
+            return "This order needs a new time from the café. {$contact}";
+        }
+        if (time() > strtotime($order['change_deadline'])) {
+            return 'Free changes ended on ' . date('D, M j, g:i A', strtotime($order['change_deadline'])) . ". {$contact}";
+        }
+        if ($order['reschedule_count'] >= Order_model::MAX_RESCHEDULES) {
+            return "This order was already moved once. {$contact}";
+        }
+        return "This order can't be changed online. {$contact}";
+    }
+
+    private function alert_cafe_change(int $order_id, string $what, string $text): void
+    {
+        try {
+            $this->call->library('notifier');
+            $order = $this->Order_model->detail($order_id);
+            $body = "Order {$order['order_number']} ({$order['customer_name']}, {$order['contact_phone']}) was {$what} by the customer.\n\n{$text}\n\n"
+                  . 'Open the order: ' . $this->frontend_url('/admin/orders/' . $order_id);
+            $this->notifier->email(config_item('cafe_email'), "Order {$order['order_number']} was {$what} by the customer", $body, 'customer_change', $order_id, null);
+        } catch (Throwable $e) {
+            $this->logger->log('error', 'Notification', 'Cafe alert failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        }
     }
 
     private function own_order(int $id): array

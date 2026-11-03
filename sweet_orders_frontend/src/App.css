@@ -1929,6 +1929,165 @@ td .allergen-checks .check {
 .allergy-note {
   font-size: 1rem;
 }
+.row.between {
+  justify-content: space-between;
+}
+.receipt-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+.receipt-tools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.receipt {
+  background: #fff;
+  color: #1f1612;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-size: 0.92rem;
+}
+.receipt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #1f1612;
+}
+.receipt-cafe {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+.receipt-title {
+  text-align: right;
+}
+.receipt-flag {
+  margin: 0;
+  padding: 8px 12px;
+  border: 2px solid var(--error);
+  border-radius: 8px;
+  color: var(--error);
+  font-weight: 700;
+}
+.receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.receipt-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b5b50;
+}
+.receipt-lines {
+  width: 100%;
+  border-collapse: collapse;
+}
+.receipt-lines th,
+.receipt-lines td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #e4d9cc;
+  text-align: left;
+  vertical-align: top;
+}
+.receipt-lines th {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b5b50;
+}
+.receipt-lines .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.receipt-lines tfoot td {
+  border-bottom: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.receipt-total td {
+  font-weight: 700;
+  font-size: 1.05rem;
+  border-top: 2px solid #1f1612;
+  padding-top: 8px;
+}
+.receipt-foot {
+  color: #6b5b50;
+  border-top: 1px dashed #d8c8b6;
+  padding-top: 10px;
+}
+@media (max-width: 520px) {
+  .receipt {
+    padding: 18px 14px;
+  }
+  .receipt-title {
+    text-align: left;
+  }
+  .receipt-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  html,
+  body,
+  .site,
+  .site-main {
+    background: #fff !important;
+  }
+  .site-header,
+  .site-footer,
+  .ingredients,
+  .preloader,
+  .no-print {
+    display: none !important;
+  }
+  .site-main,
+  .receipt-page {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none;
+  }
+  .route-fade,
+  .receipt,
+  .receipt * {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .receipt {
+    border: 0;
+    padding: 0;
+    font-size: 10.5pt;
+  }
+  .receipt-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .receipt-title {
+    text-align: right;
+  }
+  .receipt-lines tr {
+    break-inside: avoid;
+  }
+}
 .addon-picker {
   display: flex;
   flex-direction: column;

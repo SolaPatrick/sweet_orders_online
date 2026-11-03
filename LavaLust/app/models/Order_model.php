@@ -7,7 +7,7 @@ class Order_model extends Model
     protected $fillable = [
         'order_number', 'user_id', 'slot_id', 'fulfillment', 'delivery_address', 'contact_phone',
         'subtotal', 'delivery_fee', 'total', 'status', 'payment_status', 'notes', 'allergy_note',
-        'contact_email', 'policy_version', 'policy_accepted_at',
+        'contact_email', 'policy_version', 'policy_accepted_at', 'reschedule_count',
         'address_street', 'address_barangay', 'address_city', 'address_landmark', 'zone_id',
         'recipient_name', 'recipient_phone', 'occasion', 'pickup_name', 'pickup_phone', 'claim_code',
         'prepared_by', 'prepared_at', 'cancel_reason', 'refund_amount', 'refund_reference', 'refunded_at',
@@ -16,6 +16,10 @@ class Order_model extends Model
     public const LATE_PAYMENT_NOTE = 'Paid after hold expired; slot was full, needs a new slot';
 
     public const STOCK_SHORT_NOTE = 'Paid but ready-made stock ran out';
+
+    public const CHANGE_CUTOFF_HOURS = 24;
+
+    public const MAX_RESCHEDULES = 1;
 
     public const NEXT_STATUS = [
         'pending_payment'  => ['cancelled'],
@@ -86,7 +90,7 @@ class Order_model extends Model
     {
         return $this->db->table('orders o')
             ->select('o.id, o.order_number, o.user_id, o.slot_id, o.fulfillment, o.delivery_address, o.contact_phone,
-                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.stock_taken, o.notes, o.allergy_note, o.contact_email, o.policy_version, o.policy_accepted_at, o.created_at, o.updated_at,
+                      o.subtotal, o.delivery_fee, o.total, o.status, o.payment_status, o.stock_taken, o.reschedule_count, o.notes, o.allergy_note, o.contact_email, o.policy_version, o.policy_accepted_at, o.created_at, o.updated_at,
                       o.address_street, o.address_barangay, o.address_city, o.address_landmark, o.zone_id,
                       o.recipient_name, o.recipient_phone, o.occasion, o.pickup_name, o.pickup_phone, o.claim_code,
                       o.prepared_by, o.prepared_at, o.cancel_reason, o.refund_amount, o.refund_reference, o.refunded_at,
@@ -140,6 +144,7 @@ class Order_model extends Model
             $o['payment_method'] = $methods[$o['id']] ?? null;
             $o['needs_new_slot'] = in_array($o['id'], $flagged) && $open;
             $o['stock_short'] = in_array($o['id'], $short) && $open;
+            $o['refund_due'] = $o['status'] === 'cancelled' && $o['payment_status'] === 'paid';
             return $this->cast($o);
         }, $rows);
     }
@@ -147,6 +152,12 @@ class Order_model extends Model
     public function needing_new_slot(): array
     {
         return $this->flagged_open(self::LATE_PAYMENT_NOTE);
+    }
+
+    public function refunds_due(): array
+    {
+        $this->base_query()->where('o.status', 'cancelled')->where('o.payment_status', 'paid');
+        return $this->list_rows();
     }
 
     public function needing_stock(): array
@@ -358,7 +369,7 @@ class Order_model extends Model
             $p['order_id'] = (int) $p['order_id'];
             $p['amount'] = (float) $p['amount'];
             return $p;
-        }, $this->db->table('payments')->where('order_id', $id)->order_by('id', 'DESC')->get_all());
+        }, $this->db->table('payments p')->select('p.id, p.order_id, p.provider, p.checkout_session_id, p.reference, p.method, p.amount, p.status, p.paid_at, p.received_by, p.created_at, p.updated_at, u.name AS received_by_name')->left_join('users u', 'u.id = p.received_by')->where('p.order_id', $id)->order_by('p.id', 'DESC')->get_all());
 
         if ($with_notifications) {
             $order['notifications'] = $this->db->table('notifications_log')
@@ -382,6 +393,11 @@ class Order_model extends Model
         $order['hold_expires_at'] = $order['status'] === 'pending_payment'
             ? date('Y-m-d H:i:s', strtotime($order['created_at']) + order_hold_minutes() * 60)
             : null;
+        $deadline = strtotime($order['slot_date'] . ' ' . $order['start_time']) - self::CHANGE_CUTOFF_HOURS * 3600;
+        $changeable = in_array($order['status'], ['paid', 'awaiting_cash'], true) && time() <= $deadline && !$order['needs_new_slot'];
+        $order['change_deadline'] = date('Y-m-d H:i:s', $deadline);
+        $order['can_self_cancel'] = $changeable;
+        $order['can_self_reschedule'] = $changeable && $order['reschedule_count'] < self::MAX_RESCHEDULES;
         return $order;
     }
 
@@ -402,7 +418,7 @@ class Order_model extends Model
 
     public function cast(array $o): array
     {
-        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by', 'stock_taken'] as $k) {
+        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by', 'stock_taken', 'reschedule_count'] as $k) {
             if (isset($o[$k])) $o[$k] = (int) $o[$k];
         }
         foreach (['subtotal', 'delivery_fee', 'total'] as $k) {

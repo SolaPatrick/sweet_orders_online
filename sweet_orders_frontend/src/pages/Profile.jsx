@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../api/client'
+import { api, setTokens } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { ErrorBox, Field, Notice, useApi } from '../components/ui'
 import { AllergenChecks } from '../components/Allergens'
@@ -72,7 +72,10 @@ export default function Profile() {
         noValidate
         onSubmit={(e) => {
           e.preventDefault()
-          save('pw', pw, () => setPw({ current_password: '', new_password: '', new_password_confirm: '' }))
+          save('pw', pw, (res) => {
+            if (res.tokens) setTokens(res.tokens)
+            setPw({ current_password: '', new_password: '', new_password_confirm: '' })
+          })
         }}
       >
         <h3>Change password</h3>

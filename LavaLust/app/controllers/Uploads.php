@@ -41,7 +41,8 @@ class Uploads extends MY_Api_Controller
             try {
                 $url = $this->cloudinary->upload($tmp, 'sweet-orders/design-references');
             } catch (RuntimeException $e) {
-                $this->api->respond_error('The photo could not be saved: ' . $e->getMessage(), 502);
+                $this->logger->log('error', 'Upload', 'Design photo upload failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+                $this->api->respond_error('The photo could not be saved right now. Please try again in a few minutes.', 502);
             } finally {
                 @unlink($tmp);
             }

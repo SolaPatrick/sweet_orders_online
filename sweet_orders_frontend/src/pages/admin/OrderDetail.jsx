@@ -92,13 +92,20 @@ export default function OrderDetail() {
 
   return (
     <div className="stack">
-      <Link to="/admin/orders" className="small">
-        ← Orders
-      </Link>
+      <div className="row wrap between">
+        <Link to="/admin/orders" className="small">
+          ← Orders
+        </Link>
+        <Link to={`/admin/orders/${order.id}/receipt`} className="btn btn-small">
+          Print receipt
+        </Link>
+      </div>
       <div>
         <h1>
           Order {order.order_number} {order.needs_new_slot && <span className="badge badge-warning">Needs a new slot</span>}
           {order.stock_short && <span className="badge badge-warning">Short on stock</span>}
+          {order.refund_due && <span className="badge badge-cancelled">Refund to send</span>}
+          {order.reschedule_count > 0 && <span className="badge badge-preparing">Moved by customer</span>}
         </h1>
         <span className="muted">
           Placed {dateTime(order.created_at)} · {order.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'} ·{' '}
@@ -111,6 +118,12 @@ export default function OrderDetail() {
       </div>
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={actionError} />
+      {order.refund_due && (
+        <div className="alert alert-warning">
+          <strong>Refund to send:</strong> this paid order was cancelled. Send {pesoExact(order.total)} back through the original payment method
+          {payment?.method ? ` (${methodLabel(payment.method)})` : ''}, then click <strong>Record refund</strong>.
+        </div>
+      )}
       {order.allergy_note && (
         <div className="alert alert-error allergy-note" role="note">
           <strong>Allergy note from the customer:</strong> {order.allergy_note}

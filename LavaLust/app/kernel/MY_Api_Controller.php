@@ -22,10 +22,28 @@ class MY_Api_Controller extends Controller
     {
         $this->security_headers->apply_api();
         $this->call->library('api');
+        foreach ($_GET as $key => $value) {
+            if (is_array($value)) {
+                $this->api->respond_error('The value of "' . mb_substr((string) $key, 0, 40) . '" in the address is not valid.', 400);
+            }
+        }
         if ($this->uses_database) {
             $this->call->database();
             $this->db->raw("SET time_zone = '+08:00'");
         }
+    }
+
+    protected function client_ip(): string
+    {
+        $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        if (!empty(config_item('security_headers')['trust_proxy']) && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $parts = array_values(array_filter(array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']))));
+            $last = end($parts);
+            if ($last !== false && filter_var($last, FILTER_VALIDATE_IP)) {
+                return $last;
+            }
+        }
+        return $remote !== '' ? $remote : 'unknown';
     }
 
     protected function user(): array

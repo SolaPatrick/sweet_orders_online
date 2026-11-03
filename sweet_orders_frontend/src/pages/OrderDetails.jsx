@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { dateTime, isCashOrder, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
-import { ConfirmDialog, ErrorBox, Loader, Notice, StatusBadge, useApi } from '../components/ui'
+import { dateTime, dayTime, isCashOrder, occasionLabel, optionText, PAYMENT_LABELS, peso, pesoExact, slotLabel, timeOnly, methodLabel } from '../lib/format'
+import { ErrorBox, Field, FormDialog, Loader, Notice, StatusBadge, useApi } from '../components/ui'
+import RescheduleOrder from '../components/RescheduleOrder'
+import { CAFE } from '../lib/policies'
 import OrderHistory from '../components/OrderHistory'
 import { AllergenLine } from '../components/Allergens'
 import LineExtras from '../components/LineExtras'
@@ -27,6 +29,8 @@ export default function OrderDetails() {
   const { id } = useParams()
   const { data, loading, error, reload } = useApi(`/orders/${id}`)
   const [confirm, setConfirm] = useState(false)
+  const [reason, setReason] = useState('')
+  const [moving, setMoving] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState(null)
   const [notice, setNotice] = useState('')
@@ -40,7 +44,9 @@ export default function OrderDetails() {
   const payment = order.payments.find((p) => p.status === 'paid') || order.payments[0]
   const canPay = order.status === 'pending_payment' && order.payment_status !== 'paid'
   const cashDue = isCashOrder(order) && order.payment_status !== 'paid' && order.status !== 'cancelled'
-  const canCancel = canPay || (order.status === 'awaiting_cash' && order.payment_status !== 'paid')
+  const canCancel = canPay || order.can_self_cancel
+  const canMove = order.can_self_reschedule
+  const contactInstead = !order.can_self_cancel && ['paid', 'awaiting_cash', 'preparing', 'ready', 'out_for_delivery'].includes(order.status)
 
   const pay = async () => {
     setBusy(true)
@@ -62,9 +68,9 @@ export default function OrderDetails() {
     setBusy(true)
     setActionError(null)
     try {
-      await api(`/orders/${order.id}/cancel`, { method: 'POST', body: {} })
+      const res = await api(`/orders/${order.id}/cancel`, { method: 'POST', body: { reason } })
       setConfirm(false)
-      setNotice('Your order was cancelled and the time slot was released.')
+      setNotice(res.message)
       await reload()
     } catch (err) {
       setActionError(err)
@@ -84,9 +90,17 @@ export default function OrderDetails() {
           <span className="muted">Placed {dateTime(order.created_at)}</span>
         </div>
         <div className="actions">
+          <Link to={`/orders/${order.id}/receipt`} className="btn">
+            {order.payment_status === 'unpaid' ? 'Order summary' : 'View receipt'}
+          </Link>
           {canPay && (
             <button type="button" className="btn btn-primary" onClick={pay} disabled={busy}>
               Pay now
+            </button>
+          )}
+          {canMove && !moving && (
+            <button type="button" className="btn" onClick={() => setMoving(true)} disabled={busy}>
+              Change date/time
             </button>
           )}
           {canCancel && (
@@ -99,6 +113,35 @@ export default function OrderDetails() {
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={actionError} />
       {canPay && <div className="alert alert-warning">This order is unpaid. Your slot is held until {timeOnly(order.hold_expires_at)}.</div>}
+      {order.can_self_cancel && (
+        <div className="alert alert-success change-window">
+          Free changes until <strong>{dayTime(order.change_deadline)}</strong>: you can cancel{canMove ? ' or move this order to another time once' : ''}.
+          {!canMove && order.reschedule_count > 0 && ' You already moved this order once.'}
+        </div>
+      )}
+      {contactInstead && (
+        <div className="alert alert-warning">
+          {['paid', 'awaiting_cash'].includes(order.status)
+            ? `Free changes ended on ${dayTime(order.change_deadline)}.`
+            : 'Your order is already being prepared.'}{' '}
+          To change or cancel it, contact the café: <a href={`tel:${CAFE.phone.replace(/\s/g, '')}`}>{CAFE.phone}</a> ·{' '}
+          <a href={`mailto:${CAFE.email}`}>{CAFE.email}</a>
+        </div>
+      )}
+      {order.status === 'cancelled' && order.payment_status === 'paid' && (
+        <div className="alert alert-warning">The café will send your refund of {peso(order.total)} back through your original payment method.</div>
+      )}
+      {moving && (
+        <RescheduleOrder
+          order={order}
+          onClose={() => setMoving(false)}
+          onDone={async (message) => {
+            setMoving(false)
+            setNotice(message)
+            await reload()
+          }}
+        />
+      )}
       {cashDue && (
         <div className="alert alert-warning">
           Pay {peso(order.total)} in cash at the counter when you pick it up{order.claim_code ? ` and show your claim code ${order.claim_code}` : ''}.
@@ -230,15 +273,17 @@ export default function OrderDetails() {
         <OrderHistory history={order.history} />
       </section>
 
-      <ConfirmDialog
-        open={confirm}
-        title="Cancel this order?"
-        message={`Order ${order.order_number} will be cancelled and its time slot released. This cannot be undone.`}
-        confirmText="Cancel order"
-        busy={busy}
-        onConfirm={cancel}
-        onCancel={() => setConfirm(false)}
-      />
+      <FormDialog open={confirm} title="Cancel this order?" confirmText="Cancel order" danger busy={busy} onConfirm={cancel} onCancel={() => setConfirm(false)}>
+        <p className="muted">
+          Order {order.order_number} will be cancelled and its time slot released. This cannot be undone.
+          {order.payment_status === 'paid' && ` The café will send your refund of ${peso(order.total)} back through your original payment method.`}
+        </p>
+        {!canPay && (
+          <Field label="Reason (optional)">
+            <textarea rows={2} maxLength={200} value={reason} placeholder="e.g. The party was moved" onChange={(e) => setReason(e.target.value)} />
+          </Field>
+        )}
+      </FormDialog>
     </div>
   )
 }

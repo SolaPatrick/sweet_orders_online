@@ -63,6 +63,9 @@ export default function OrderConfirmed() {
           <Link to={`/orders/${order.id}`} className="btn btn-primary">
             Track this order
           </Link>
+          <Link to={`/orders/${order.id}/receipt`} className="btn">
+            View receipt
+          </Link>
           <Link to="/menu" className="btn">
             Back to menu
           </Link>

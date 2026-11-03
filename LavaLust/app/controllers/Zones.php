@@ -123,7 +123,7 @@ class Zones extends MY_Api_Controller
     private function psgc_down(RuntimeException $e): void
     {
         if ($e->getCode() === 404) {
-            $this->api->respond_error($e->getMessage(), 404);
+            $this->api->respond_error('That city or municipality was not found in the PSGC list.', 404);
         }
         $this->logger->log('error', 'PSGC', $e->getMessage(), $e->getFile(), $e->getLine());
         $this->api->respond_error('The Philippine address list (PSGC) cannot be reached right now. You can still add delivery areas by hand.', 502);

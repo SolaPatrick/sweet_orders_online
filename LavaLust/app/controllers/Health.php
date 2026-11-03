@@ -12,6 +12,12 @@ class Health extends MY_Api_Controller
     public function index()
     {
         $this->api->require_method('GET');
+        $this->api->respond(['status' => 'ok']);
+    }
+
+    public function details()
+    {
+        $this->api->require_method('GET');
         $database = 'not configured';
         $tables = null;
         $db_name = database_config()['main']['database'] ?? '';

@@ -14,6 +14,7 @@ const LINKS = [
   ['/admin/reviews', 'Reviews', false, true],
   ['/admin/users', 'Users', false, true],
   ['/admin/notifications', 'Notification log', false, true],
+  ['/admin/sign-in-activity', 'Sign-in activity', false, true],
 ]
 
 export default function AdminLayout() {

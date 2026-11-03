@@ -14,6 +14,7 @@ export default function Dashboard() {
     recent_orders: recent,
     needs_new_slot: needsSlot = [],
     needs_stock: needsStock = [],
+    refunds_due: refundsDue = [],
     ready_made: readyMade = [],
   } = data
   const max = Math.max(1, ...sales.map((s) => s.total))
@@ -34,6 +35,22 @@ export default function Dashboard() {
               <span key={o.id}>
                 {i > 0 && ' · '}
                 <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link> ({o.customer_name})
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {refundsDue.length > 0 && (
+        <div className="alert alert-warning stack">
+          <strong>
+            <span className="badge badge-cancelled">Refunds to send</span> {refundsDue.length} cancelled order{refundsDue.length > 1 ? 's were' : ' was'} already
+            paid
+          </strong>
+          <span>
+            {refundsDue.map((o, i) => (
+              <span key={o.id}>
+                {i > 0 && ' · '}
+                <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link> ({o.customer_name}, {peso(o.total)})
               </span>
             ))}
           </span>

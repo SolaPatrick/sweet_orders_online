@@ -2,6 +2,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS email_verifications;
+DROP TABLE IF EXISTS login_attempts;
 DROP TABLE IF EXISTS password_resets;
 DROP TABLE IF EXISTS reviews;
 DROP TABLE IF EXISTS order_status_history;
@@ -200,6 +201,7 @@ CREATE TABLE orders (
                       NOT NULL DEFAULT 'pending_payment',
     payment_status    ENUM('unpaid','paid','failed','refunded') NOT NULL DEFAULT 'unpaid',
     stock_taken       TINYINT(1)    NOT NULL DEFAULT 0,
+    reschedule_count  TINYINT       NOT NULL DEFAULT 0,
     notes             TEXT          NULL,
     allergy_note      VARCHAR(500)  NULL,
     policy_version    VARCHAR(20)   NULL,
@@ -399,6 +401,23 @@ CREATE TABLE email_verifications (
     KEY idx_email_verifications_user (user_id),
     CONSTRAINT fk_email_verifications_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE login_attempts (
+    id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    email       VARCHAR(255) NOT NULL,
+    user_id     INT UNSIGNED NULL,
+    success     TINYINT(1)   NOT NULL DEFAULT 0,
+    reason      VARCHAR(20)  NOT NULL DEFAULT 'wrong_password',
+    ip          VARCHAR(45)  NULL,
+    user_agent  VARCHAR(255) NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_login_attempts_email_time (email, created_at),
+    KEY idx_login_attempts_success_time (success, created_at),
+    KEY idx_login_attempts_user (user_id),
+    CONSTRAINT fk_login_attempts_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE password_resets (

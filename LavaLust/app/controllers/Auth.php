@@ -6,7 +6,7 @@ class Auth extends MY_Api_Controller
     public function register()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('register:' . $this->request->ip_address(), 10, 600);
+        $this->api->rate_limit('register:' . $this->client_ip(), 10, 600);
         $in = $this->api->body();
         $this->validate($in, [
             'name|Name'                     => 'required|max_length[100]',
@@ -33,7 +33,7 @@ class Auth extends MY_Api_Controller
     public function verify_email()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('verify:' . $this->request->ip_address(), 20, 600);
+        $this->api->rate_limit('verify:' . $this->client_ip(), 20, 600);
         $in = $this->api->body();
         $this->validate($in, ['token|Link' => 'required|max_length[100]']);
         $this->call->model(['Email_verification_model', 'User_model']);
@@ -80,18 +80,30 @@ class Auth extends MY_Api_Controller
     public function login()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('login:' . $this->request->ip_address(), 10, 300);
+        $ip = $this->client_ip();
+        $this->api->rate_limit('login:' . $ip, 10, 300);
         $in = $this->api->body();
-        $this->validate($in, ['email|Email' => 'required|valid_email', 'password|Password' => 'required']);
+        $this->validate($in, ['email|Email' => 'required|valid_email|max_length[255]', 'password|Password' => 'required|max_length[200]']);
 
-        $this->call->model('User_model');
-        $user = $this->User_model->find_by_email($in['email']);
-        if (!$user || !password_verify($in['password'], $user['password'])) {
+        $this->call->model(['User_model', 'Login_attempt_model']);
+        $email = strtolower(trim((string) $in['email']));
+        $agent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $user = $this->User_model->find_by_email($email);
+        $locked = $this->Login_attempt_model->locked_until($email);
+        if ($locked) {
+            $this->Login_attempt_model->record($email, $user['id'] ?? null, false, 'locked', $ip, $agent);
+            $minutes = max(1, (int) ceil(($locked - time()) / 60));
+            $this->api->respond_error("Too many wrong passwords for this account. Please try again in {$minutes} minute" . ($minutes === 1 ? '' : 's') . ', or reset your password.', 429);
+        }
+        if (!$user || !password_verify((string) $in['password'], $user['password'])) {
+            $this->Login_attempt_model->record($email, $user['id'] ?? null, false, $user ? 'wrong_password' : 'unknown_email', $ip, $agent);
             $this->api->respond_error('Wrong email or password.', 401);
         }
         if (!(int) $user['is_active']) {
+            $this->Login_attempt_model->record($email, $user['id'], false, 'disabled', $ip, $agent);
             $this->api->respond_error('This account is disabled. Please contact the café.', 403);
         }
+        $this->Login_attempt_model->record($email, $user['id'], true, 'ok', $ip, $agent);
         $tokens = $this->api->issue_tokens(['id' => $user['id'], 'role' => $user['role']]);
         $this->api->respond(['message' => 'Logged in.', 'user' => $this->User_model->public_fields($user), 'tokens' => $tokens]);
     }
@@ -117,7 +129,7 @@ class Auth extends MY_Api_Controller
     public function forgot()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('forgot:' . $this->request->ip_address(), 5, 900);
+        $this->api->rate_limit('forgot:' . $this->client_ip(), 5, 900);
         $in = $this->api->body();
         $this->validate($in, ['email|Email' => 'required|valid_email|max_length[255]']);
         $minutes = (int) config_item('reset_token_minutes');
@@ -139,7 +151,7 @@ class Auth extends MY_Api_Controller
     public function reset()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('reset:' . $this->request->ip_address(), 10, 900);
+        $this->api->rate_limit('reset:' . $this->client_ip(), 10, 900);
         $in = $this->api->body();
         $this->validate($in, [
             'token|Reset link'                          => 'required|max_length[128]',
@@ -186,8 +198,12 @@ class Auth extends MY_Api_Controller
             if (!password_verify($in['current_password'], $user['password'])) {
                 $this->fail_validation(['current_password' => 'Current password is wrong.']);
             }
+            $this->db->transaction();
             $this->User_model->update($user['id'], ['password' => password_hash($in['new_password'], PASSWORD_DEFAULT)]);
-            $this->api->respond(['message' => 'Password updated.']);
+            $this->db->table('refresh_tokens')->where('user_id', (int) $user['id'])->delete();
+            $this->db->commit();
+            $tokens = $this->api->issue_tokens(['id' => $user['id'], 'role' => $user['role']]);
+            $this->api->respond(['message' => 'Password updated. Other devices were signed out.', 'tokens' => $tokens]);
         }
 
         $this->validate($in, [

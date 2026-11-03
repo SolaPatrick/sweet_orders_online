@@ -23,6 +23,7 @@ import NotFound from './pages/NotFound'
 import AccessDenied from './pages/AccessDenied'
 import VerifyEmail from './pages/VerifyEmail'
 import Policies from './pages/Policies'
+import Receipt from './pages/Receipt'
 import Dashboard from './pages/admin/Dashboard'
 import AdminOrders from './pages/admin/Orders'
 import AdminOrderDetail from './pages/admin/OrderDetail'
@@ -35,6 +36,7 @@ import Notifications from './pages/admin/Notifications'
 import Users from './pages/admin/Users'
 import DeliveryZones from './pages/admin/DeliveryZones'
 import Addons from './pages/admin/Addons'
+import SignInActivity from './pages/admin/SignInActivity'
 import Reviews from './pages/admin/Reviews'
 
 export default function App() {
@@ -57,12 +59,14 @@ export default function App() {
         <Route path="policies/:slug" element={<Policies />} />
         <Route path="orders" element={<RequireAuth><MyOrders /></RequireAuth>} />
         <Route path="orders/:id" element={<RequireAuth><OrderDetails /></RequireAuth>} />
+        <Route path="orders/:id/receipt" element={<RequireAuth><Receipt /></RequireAuth>} />
         <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="about" element={<About />} />
         <Route path="contact" element={<Contact />} />
         <Route path="403" element={<AccessDenied />} />
         <Route path="*" element={<NotFound />} />
       </Route>
+      <Route path="admin/orders/:id/receipt" element={<RequireStaff><Receipt admin /></RequireStaff>} />
       <Route path="admin" element={<RequireStaff><AdminLayout /></RequireStaff>}>
         <Route index element={<Dashboard />} />
         <Route path="orders" element={<AdminOrders />} />
@@ -74,6 +78,7 @@ export default function App() {
         <Route path="slots" element={<RequireAdmin><Slots /></RequireAdmin>} />
         <Route path="delivery-zones" element={<RequireAdmin><DeliveryZones /></RequireAdmin>} />
         <Route path="addons" element={<RequireAdmin><Addons /></RequireAdmin>} />
+        <Route path="sign-in-activity" element={<RequireAdmin><SignInActivity /></RequireAdmin>} />
         <Route path="payments" element={<RequireAdmin><Payments /></RequireAdmin>} />
         <Route path="reviews" element={<RequireAdmin><Reviews /></RequireAdmin>} />
         <Route path="users" element={<RequireAdmin><Users /></RequireAdmin>} />
