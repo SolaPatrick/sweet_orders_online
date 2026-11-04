@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
 import './App.css'
 import SiteLayout from './components/SiteLayout'
 import AdminLayout from './components/AdminLayout'
@@ -40,8 +41,9 @@ import SignInActivity from './pages/admin/SignInActivity'
 import Reviews from './pages/admin/Reviews'
 
 export default function App() {
+  const { sessionKey } = useAuth()
   return (
-    <Routes>
+    <Routes key={sessionKey}>
       <Route element={<SiteLayout />}>
         <Route index element={<Home />} />
         <Route path="menu" element={<Menu />} />

@@ -3,6 +3,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS email_verifications;
 DROP TABLE IF EXISTS login_attempts;
+DROP TABLE IF EXISTS order_counters;
 DROP TABLE IF EXISTS password_resets;
 DROP TABLE IF EXISTS reviews;
 DROP TABLE IF EXISTS order_status_history;
@@ -347,12 +348,18 @@ CREATE TABLE notifications_log (
         REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE order_counters (
+    day          CHAR(8)      NOT NULL,
+    last_number  INT UNSIGNED NOT NULL,
+    PRIMARY KEY (day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE order_status_history (
     id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
     order_id     INT UNSIGNED NOT NULL,
-    from_status  ENUM('pending_payment','paid','preparing','ready',
+    from_status  ENUM('pending_payment','awaiting_cash','paid','preparing','ready',
                       'out_for_delivery','completed','cancelled') NULL,
-    to_status    ENUM('pending_payment','paid','preparing','ready',
+    to_status    ENUM('pending_payment','awaiting_cash','paid','preparing','ready',
                       'out_for_delivery','completed','cancelled') NOT NULL,
     changed_by   INT UNSIGNED NULL,
     note         VARCHAR(255) NULL,

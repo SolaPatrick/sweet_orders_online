@@ -6,7 +6,7 @@ class Contact extends MY_Api_Controller
     public function send()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('contact:' . $this->client_ip(), 5, 600);
+        $this->api->rate_limit('contact:' . $this->client_ip(), 20, 600);
         $in = $this->api->body();
         $this->validate($in, [
             'name|Name'           => 'required|max_length[100]',

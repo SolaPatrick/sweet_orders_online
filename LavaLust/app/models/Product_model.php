@@ -134,6 +134,7 @@ class Product_model extends Model
             ->where('i.order_id', $order_id)
             ->where('p.product_type', 'ready_made')
             ->group_by(['i.product_id', 'p.name'])
+            ->order_by('i.product_id')
             ->get_all();
     }
 

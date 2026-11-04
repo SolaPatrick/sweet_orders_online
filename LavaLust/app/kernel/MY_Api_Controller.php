@@ -180,12 +180,16 @@ class MY_Api_Controller extends Controller
             return false;
         }
         $this->db->transaction();
-        $this->db->table('payments')->where('id', $payment_id)->update([
+        $updated = $this->db->table('payments')->where('id', $payment_id)->where('status', '<>', 'paid')->update([
             'status'    => 'paid',
             'reference' => $info['reference'] ?? $payment['reference'],
             'method'    => $info['method'] ?? $payment['method'],
             'paid_at'   => $info['paid_at'] ?? date('Y-m-d H:i:s'),
         ]);
+        if (!$updated) {
+            $this->db->roll_back();
+            return false;
+        }
         $order = $this->db->raw('SELECT id, status, slot_id, stock_taken FROM orders WHERE id = ? FOR UPDATE', [$payment['order_id']])->fetch();
         $this->call->model('Order_model');
         $note = null;

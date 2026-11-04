@@ -1,11 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { api, getTokens, setTokens } from '../api/client'
+import { api, getTokens, setTokens, TOKENS_KEY } from '../api/client'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(() => Boolean(getTokens()))
+  const [account, setAccount] = useState({ id: null, key: 0 })
+  const userId = user?.id ?? null
+  if (userId !== account.id) {
+    setAccount({ id: userId, key: account.id === null ? account.key : account.key + 1 })
+  }
 
   useEffect(() => {
     if (!getTokens()) return
@@ -19,6 +24,21 @@ export function AuthProvider({ children }) {
     const onLogout = () => setUser(null)
     window.addEventListener('sweet-orders-logout', onLogout)
     return () => window.removeEventListener('sweet-orders-logout', onLogout)
+  }, [])
+
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== TOKENS_KEY && e.key !== null) return
+      if (!getTokens()) {
+        setUser(null)
+        return
+      }
+      api('/auth/me')
+        .then((data) => setUser(data.user))
+        .catch(() => {})
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   const login = useCallback(async (email, password) => {
@@ -52,8 +72,9 @@ export function AuthProvider({ children }) {
       logout,
       isAdmin: user?.role === 'admin',
       isStaff: user?.role === 'admin' || user?.role === 'staff',
+      sessionKey: account.key,
     }),
-    [user, loading, login, register, logout],
+    [user, loading, login, register, logout, account.key],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

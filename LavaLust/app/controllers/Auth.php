@@ -6,7 +6,7 @@ class Auth extends MY_Api_Controller
     public function register()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('register:' . $this->client_ip(), 10, 600);
+        $this->api->rate_limit('register:' . $this->client_ip(), 40, 600);
         $in = $this->api->body();
         $this->validate($in, [
             'name|Name'                     => 'required|max_length[100]',
@@ -33,7 +33,7 @@ class Auth extends MY_Api_Controller
     public function verify_email()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('verify:' . $this->client_ip(), 20, 600);
+        $this->api->rate_limit('verify:' . $this->client_ip(), 60, 600);
         $in = $this->api->body();
         $this->validate($in, ['token|Link' => 'required|max_length[100]']);
         $this->call->model(['Email_verification_model', 'User_model']);
@@ -81,9 +81,10 @@ class Auth extends MY_Api_Controller
     {
         $this->api->require_method('POST');
         $ip = $this->client_ip();
-        $this->api->rate_limit('login:' . $ip, 10, 300);
+        $this->api->rate_limit('login:' . $ip, 60, 300);
         $in = $this->api->body();
         $this->validate($in, ['email|Email' => 'required|valid_email|max_length[255]', 'password|Password' => 'required|max_length[200]']);
+        $this->api->rate_limit('login-email:' . sha1(strtolower(trim((string) $in['email']))), 10, 300);
 
         $this->call->model(['User_model', 'Login_attempt_model']);
         $email = strtolower(trim((string) $in['email']));
@@ -129,9 +130,10 @@ class Auth extends MY_Api_Controller
     public function forgot()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('forgot:' . $this->client_ip(), 5, 900);
+        $this->api->rate_limit('forgot:' . $this->client_ip(), 30, 900);
         $in = $this->api->body();
         $this->validate($in, ['email|Email' => 'required|valid_email|max_length[255]']);
+        $this->api->rate_limit('forgot-email:' . sha1(strtolower(trim((string) $in['email']))), 3, 900);
         $minutes = (int) config_item('reset_token_minutes');
 
         $this->call->model(['User_model', 'Password_reset_model']);
@@ -151,7 +153,7 @@ class Auth extends MY_Api_Controller
     public function reset()
     {
         $this->api->require_method('POST');
-        $this->api->rate_limit('reset:' . $this->client_ip(), 10, 900);
+        $this->api->rate_limit('reset:' . $this->client_ip(), 40, 900);
         $in = $this->api->body();
         $this->validate($in, [
             'token|Reset link'                          => 'required|max_length[128]',

@@ -65,11 +65,11 @@ export default function Checkout() {
       .catch(() => {})
   }, [setUser])
 
-  const productIds = [...new Set(cart.items.map((i) => i.product_id))].join(',')
+  const productIds = [...new Set(cart.checkoutItems.map((i) => i.product_id))].join(',')
 
   useEffect(() => {
     let alive = true
-    api('/slots/dates', { query: { fulfillment, days: 27, lead_hours: cart.leadHours, product_ids: productIds } })
+    api('/slots/dates', { query: { fulfillment, days: 27, lead_hours: cart.checkoutLeadHours, product_ids: productIds } })
       .then((d) => {
         if (!alive) return
         setDatesRes({ fulfillment, days: d.days, meta: d.meta })
@@ -80,30 +80,30 @@ export default function Checkout() {
     return () => {
       alive = false
     }
-  }, [fulfillment, cart.leadHours, productIds])
+  }, [fulfillment, cart.checkoutLeadHours, productIds])
 
-  const slotsKey = `${date}|${fulfillment}|${cart.leadHours}|${productIds}`
+  const slotsKey = `${date}|${fulfillment}|${cart.checkoutLeadHours}|${productIds}`
   useEffect(() => {
     if (!date) return
     let alive = true
-    api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours, product_ids: productIds } })
+    api('/slots', { query: { date, fulfillment, lead_hours: cart.checkoutLeadHours, product_ids: productIds } })
       .then((d) => alive && setSlotsRes({ key: slotsKey, data: d.data }))
       .catch((err) => alive && setError(err))
     return () => {
       alive = false
     }
-  }, [date, fulfillment, cart.leadHours, productIds, slotsKey])
+  }, [date, fulfillment, cart.checkoutLeadHours, productIds, slotsKey])
 
   const dates = datesRes?.fulfillment === fulfillment ? datesRes : null
   const slots = !date ? [] : slotsRes?.key === slotsKey ? slotsRes.data : null
 
-  if (!cart.items.length) {
+  if (!cart.checkoutItems.length) {
     return (
       <div className="container page">
         <h1>Checkout</h1>
-        <Empty title="Your cart is empty.">
-          <Link to="/menu" className="btn btn-primary">
-            Browse the menu
+        <Empty title={cart.items.length ? 'No items are selected in your cart.' : 'Your cart is empty.'}>
+          <Link to={cart.items.length ? '/cart' : '/menu'} className="btn btn-primary">
+            {cart.items.length ? 'Back to cart' : 'Browse the menu'}
           </Link>
         </Empty>
       </div>
@@ -114,11 +114,11 @@ export default function Checkout() {
   const zone = useZones ? zones.find((z) => String(z.id) === zoneId) : null
   const minZoneFee = useZones ? Math.min(...zones.map((z) => z.fee)) : 0
   const fee = fulfillment === 'delivery' ? (useZones ? zone?.fee || 0 : deliveryFee) : 0
-  const total = cart.subtotal + fee
+  const total = cart.checkoutSubtotal + fee
   const visibleSlots = (slots || []).filter((s) => !s.too_soon)
   const slotId = visibleSlots.some((s) => s.id === pickedSlotId && s.available) ? pickedSlotId : null
-  const slowest = dates?.meta.lead_item || [...cart.items].sort((a, b) => (b.lead_time_hours || 0) - (a.lead_time_hours || 0))[0]
-  const leadHours = dates?.meta.lead_hours ?? cart.leadHours
+  const slowest = dates?.meta.lead_item || [...cart.checkoutItems].sort((a, b) => (b.lead_time_hours || 0) - (a.lead_time_hours || 0))[0]
+  const leadHours = dates?.meta.lead_hours ?? cart.checkoutLeadHours
   const earliestDate = dates?.meta.earliest_date
   const leadNote = !leadHours
     ? ''
@@ -157,6 +157,7 @@ export default function Checkout() {
       return
     }
     const someoneElse = fulfillment === 'pickup' && pickupBy === 'other'
+    const ordered = cart.checkoutItems
     setBusy(true)
     try {
       const res = await api('/orders', {
@@ -179,7 +180,7 @@ export default function Checkout() {
           contact_email: contactEmail.trim(),
           accept_policies: accepted,
           payment_method: cash ? 'cash' : method,
-          items: cart.items.map((i) => ({
+          items: ordered.map((i) => ({
             product_id: i.product_id,
             quantity: i.quantity,
             option_ids: i.option_ids,
@@ -190,14 +191,14 @@ export default function Checkout() {
           })),
         },
       })
-      cart.clear()
+      cart.removeKeys(ordered.map((i) => i.key))
       if (res.payment.mode === 'simulate' || res.payment.mode === 'cash') navigate(`/order-confirmed/${res.order.id}`)
       else window.location.assign(res.payment.checkout_url)
     } catch (err) {
       setError(err)
       setErrors(err.errors || {})
       if (err.status === 409) {
-        api('/slots', { query: { date, fulfillment, lead_hours: cart.leadHours, product_ids: productIds } }).then((d) => setSlotsRes({ key: slotsKey, data: d.data }))
+        api('/slots', { query: { date, fulfillment, lead_hours: cart.checkoutLeadHours, product_ids: productIds } }).then((d) => setSlotsRes({ key: slotsKey, data: d.data }))
       }
       setBusy(false)
     }
@@ -343,7 +344,7 @@ export default function Checkout() {
 
         <aside className="card summary">
           <h3>Your order</h3>
-          {cart.items.map((i) => (
+          {cart.checkoutItems.map((i) => (
             <div key={i.key} className="summary-line">
               <div className="kv small">
                 <span>

@@ -1,7 +1,7 @@
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '')
 
-const TOKENS_KEY = 'sweet_orders_tokens'
+export const TOKENS_KEY = 'sweet_orders_tokens'
 
 export class ApiError extends Error {
   constructor(message, status, errors = {}) {
@@ -24,31 +24,39 @@ export function setTokens(tokens) {
   else localStorage.removeItem(TOKENS_KEY)
 }
 
+const NO_RENEW = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/auth/forgot', '/auth/reset', '/auth/verify-email']
+
 let refreshing = null
 
-async function refreshTokens() {
-  const tokens = getTokens()
-  if (!tokens?.refresh_token) return false
+async function renew(used) {
+  const current = getTokens()
+  if (!current?.refresh_token) return false
+  if (current.access_token !== used?.access_token) return true
+  const res = await fetch(`${API_URL}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: current.refresh_token }),
+  }).catch(() => null)
+  if (!res) return false
+  if (res.ok) {
+    const data = await res.json()
+    setTokens(data.tokens)
+    return true
+  }
+  const latest = getTokens()
+  if (latest?.refresh_token && latest.refresh_token !== current.refresh_token) return true
+  setTokens(null)
+  window.dispatchEvent(new Event('sweet-orders-logout'))
+  return false
+}
+
+function refreshTokens(used) {
   if (!refreshing) {
-    refreshing = fetch(`${API_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+    const run = () => renew(used)
+    const job = navigator.locks?.request ? navigator.locks.request('sweet_orders_refresh', run) : run()
+    refreshing = job.catch(() => false).finally(() => {
+      refreshing = null
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('refresh failed')
-        const data = await res.json()
-        setTokens(data.tokens)
-        return true
-      })
-      .catch(() => {
-        setTokens(null)
-        window.dispatchEvent(new Event('sweet-orders-logout'))
-        return false
-      })
-      .finally(() => {
-        refreshing = null
-      })
   }
   return refreshing
 }
@@ -83,8 +91,8 @@ export async function api(path, { method = 'GET', body, query, retry = true } = 
     throw new ApiError('Cannot reach the server. Check that the API is running and VITE_API_URL is correct.', 0)
   }
 
-  if (res.status === 401 && retry && tokens?.refresh_token && !path.startsWith('/auth/')) {
-    if (await refreshTokens()) return api(path, { method, body, query, retry: false })
+  if (res.status === 401 && retry && tokens?.refresh_token && !NO_RENEW.includes(path)) {
+    if (await refreshTokens(tokens)) return api(path, { method, body, query, retry: false })
   }
 
   let data

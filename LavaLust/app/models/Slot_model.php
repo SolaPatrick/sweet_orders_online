@@ -32,6 +32,16 @@ class Slot_model extends Model
                     'changed_by'  => null,
                     'note'        => 'Payment hold expired',
                 ]);
+                $this->call->model('Product_model');
+                if ($this->Product_model->return_stock((int) $order['id'])) {
+                    $this->db->table('order_status_history')->insert([
+                        'order_id'    => $order['id'],
+                        'from_status' => 'cancelled',
+                        'to_status'   => 'cancelled',
+                        'changed_by'  => null,
+                        'note'        => 'Ready-made stock put back',
+                    ]);
+                }
             }
             $this->db->commit();
         }

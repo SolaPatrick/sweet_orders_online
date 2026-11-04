@@ -7,7 +7,7 @@ import { AllergenLine } from '../components/Allergens'
 import LineExtras from '../components/LineExtras'
 
 export default function Cart() {
-  const { items, subtotal, leadHours, setQuantity, remove } = useCart()
+  const { items, checkoutItems, checkoutCount, checkoutSubtotal, checkoutLeadHours, allSelected, setQuantity, setSelected, selectAll, remove } = useCart()
   const navigate = useNavigate()
   const { user } = useAuth()
 
@@ -29,9 +29,23 @@ export default function Cart() {
       <h1>Your cart</h1>
       <div className="two-col">
         <div className="stack">
+          <label className="cart-select-all">
+            <input type="checkbox" checked={allSelected} onChange={(e) => selectAll(e.target.checked)} />
+            <span>
+              Select all ({checkoutItems.length} of {items.length} selected)
+            </span>
+          </label>
           {items.map((i) => (
-            <div key={i.key} className="card cart-line">
-              <Photo src={i.image_url} alt={i.name} className="thumb" />
+            <div key={i.key} className={`card cart-line${i.selected === false ? ' is-off' : ''}`}>
+              <label className="cart-pick">
+                <input
+                  type="checkbox"
+                  checked={i.selected !== false}
+                  onChange={(e) => setSelected(i.key, e.target.checked)}
+                  aria-label={`Include ${i.name} in checkout`}
+                />
+                <Photo src={i.image_url} alt={i.name} className="thumb" />
+              </label>
               <div className="grow">
                 <strong>{i.name}</strong>
                 <div className="muted small">
@@ -58,8 +72,12 @@ export default function Cart() {
         <aside className="card summary">
           <h3>Order summary</h3>
           <div className="kv">
+            <span>Items selected</span>
+            <span>{checkoutCount}</span>
+          </div>
+          <div className="kv">
             <span>Subtotal</span>
-            <strong>{peso(subtotal)}</strong>
+            <strong>{peso(checkoutSubtotal)}</strong>
           </div>
           <div className="kv">
             <span>Delivery fee</span>
@@ -67,11 +85,11 @@ export default function Cart() {
           </div>
           <div className="kv total">
             <span>Total</span>
-            <strong>{peso(subtotal)}</strong>
+            <strong>{peso(checkoutSubtotal)}</strong>
           </div>
-          {leadHours > 0 && <p className="muted small">Your cart needs {leadHours} hours of preparation, so earlier time slots are hidden at checkout.</p>}
-          <button type="button" className="btn btn-primary btn-block" onClick={() => navigate('/checkout')}>
-            Proceed to checkout
+          {checkoutLeadHours > 0 && <p className="muted small">Your selected items need {checkoutLeadHours} hours of preparation, so earlier time slots are hidden at checkout.</p>}
+          <button type="button" className="btn btn-primary btn-block" disabled={!checkoutItems.length} onClick={() => navigate('/checkout')}>
+            {checkoutItems.length ? 'Proceed to checkout' : 'Select items to check out'}
           </button>
         </aside>
       </div>

@@ -230,10 +230,37 @@ class Orders extends MY_Api_Controller
         };
 
         $this->db->transaction();
+        $this->db->raw('SELECT id FROM users WHERE id = ? FOR UPDATE', [(int) $user['id']]);
         if (!$this->Slot_model->book_one((int) $slot['id'])) {
             $this->db->roll_back();
             $this->response->send_json_error('That time slot just filled up or was closed. Please pick another one.', 409, ['errors' => ['slot_id' => 'This slot is full or closed.']]);
             exit;
+        }
+        $limited = [];
+        foreach ($wanted as $product_id => $w) {
+            if ($w['product']['product_type'] !== 'ready_made' && $w['product']['daily_limit'] !== null) {
+                $limited[(int) $product_id] = $w;
+            }
+        }
+        ksort($limited);
+        foreach (array_keys($limited) as $product_id) {
+            $this->db->raw('SELECT id FROM products WHERE id = ? FOR UPDATE', [$product_id]);
+        }
+        if ($this->Order_model->count_unpaid_for_user((int) $user['id']) >= $limit) {
+            $this->db->roll_back();
+            $this->api->respond_error("You already have {$limit} unpaid orders. Please pay for or cancel one of them in My orders before placing a new order.", 409);
+        }
+        foreach ($limited as $product_id => $w) {
+            $left = max(0, $w['product']['daily_limit'] - $this->Product_model->sold_on($product_id, $slot['slot_date']));
+            if ($w['qty'] > $left) {
+                $errors["items.{$w['index']}"] = $left > 0
+                    ? "Only {$left} {$w['product']['name']} left for {$day}."
+                    : "{$w['product']['name']} is sold out for {$day}.";
+            }
+        }
+        if ($errors) {
+            $this->db->roll_back();
+            $this->fail_validation($errors, 'Some items in your cart need attention.');
         }
         $order_id = $this->Order_model->create_with_items(array_merge([
             'user_id'          => $user['id'],
@@ -259,12 +286,12 @@ class Orders extends MY_Api_Controller
             'policy_accepted_at' => date('Y-m-d H:i:s'),
         ], $address), $lines);
         $this->Order_model->add_history($order_id, null, $cash ? 'awaiting_cash' : 'pending_payment', $user['id'], $cash ? 'Order placed, pay in cash at the counter' : 'Order placed');
+        $short = $this->Product_model->take_stock($order_id);
+        if ($short) {
+            $this->db->roll_back();
+            $this->fail_validation(['items' => implode(', ', $short) . ' just sold out. Please update your cart.'], 'Some items just sold out.');
+        }
         if ($cash) {
-            $short = $this->Product_model->take_stock($order_id);
-            if ($short) {
-                $this->db->roll_back();
-                $this->fail_validation(['items' => implode(', ', $short) . ' just sold out. Please update your cart.'], 'Some items just sold out.');
-            }
             $this->db->table('payments')->insert([
                 'order_id' => $order_id,
                 'provider' => 'cash',
@@ -493,7 +520,7 @@ class Orders extends MY_Api_Controller
         $this->call->model(['Slot_model', 'Order_model']);
         $this->Slot_model->release_expired_holds();
         $order = $this->Order_model->detail($id);
-        if (!$order || ($order['user_id'] !== (int) $user['id'] && $user['role'] !== 'admin')) {
+        if (!$order || $order['user_id'] !== (int) $user['id']) {
             $this->api->respond_error('Order not found.', 404);
         }
         return $order;

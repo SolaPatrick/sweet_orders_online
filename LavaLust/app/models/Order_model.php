@@ -34,21 +34,19 @@ class Order_model extends Model
 
     public function next_order_number(): string
     {
-        $prefix = 'SO-' . date('Ymd') . '-';
-        $last = $this->db->table('orders')
-            ->select('order_number')
-            ->like('order_number', $prefix . '%')
-            ->order_by('order_number', 'DESC')
-            ->limit(1)
-            ->get();
-        $n = $last ? (int) substr($last['order_number'], -4) + 1 : 1;
-        return $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+        $day = date('Ymd');
+        $this->db->raw(
+            'INSERT INTO order_counters (day, last_number) VALUES (?, 1) ON DUPLICATE KEY UPDATE last_number = last_number + 1',
+            [$day]
+        );
+        $row = $this->db->table('order_counters')->select('last_number')->where('day', $day)->get();
+        return 'SO-' . $day . '-' . str_pad((string) $row['last_number'], 4, '0', STR_PAD_LEFT);
     }
 
     public function create_with_items(array $order, array $lines): int
     {
         $order_id = null;
-        for ($try = 0; $try < 5 && !$order_id; $try++) {
+        for ($try = 0; $try < 20 && !$order_id; $try++) {
             $order['order_number'] = $this->next_order_number();
             try {
                 $this->db->table('orders')->insert($order);

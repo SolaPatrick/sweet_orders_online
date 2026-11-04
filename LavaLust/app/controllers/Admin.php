@@ -145,6 +145,7 @@ class Admin extends MY_Api_Controller
         }
 
         $this->db->transaction();
+        $this->lock_unchanged_order($order);
         $this->Order_model->change_status($order, $in['status'], $actor['id'], $note !== '' ? $note : null, $extra);
         if ($in['status'] === 'cancelled') {
             if (!$order['needs_new_slot']) {
@@ -191,6 +192,7 @@ class Admin extends MY_Api_Controller
         $reference = trim((string) ($in['reference'] ?? ''));
         $change = round((float) $in['amount'] - $order['total'], 2);
         $this->db->transaction();
+        $this->lock_unchanged_order($order);
         $updated = $this->db->table('payments')->where('id', $cash['id'])->where('status', 'pending')->update([
             'status'      => 'paid',
             'method'      => 'cash',
@@ -210,6 +212,15 @@ class Admin extends MY_Api_Controller
         $this->db->commit();
         $this->notify_order((int) $id, 'cash_received');
         $this->api->respond(['message' => 'Cash payment recorded.' . ($change > 0 ? ' Change to give: PHP ' . number_format($change, 2) . '.' : ''), 'data' => $this->Order_model->detail((int) $id, true)]);
+    }
+
+    private function lock_unchanged_order(array $order): void
+    {
+        $now = $this->db->raw('SELECT status, payment_status, slot_id FROM orders WHERE id = ? FOR UPDATE', [(int) $order['id']])->fetch();
+        if (!$now || $now['status'] !== $order['status'] || $now['payment_status'] !== $order['payment_status'] || (int) $now['slot_id'] !== (int) $order['slot_id']) {
+            $this->db->roll_back();
+            $this->api->respond_error('This order was just changed by someone else. Please refresh the page and try again.', 409);
+        }
     }
 
     public function order_preparer($id)
@@ -257,6 +268,7 @@ class Admin extends MY_Api_Controller
             $this->fail_validation(['refund_amount' => 'The refund cannot be more than the order total of PHP ' . number_format($order['total'], 2) . '.']);
         }
         $this->db->transaction();
+        $this->lock_unchanged_order($order);
         $this->db->table('orders')->where('id', (int) $id)->update([
             'payment_status'   => 'refunded',
             'refund_amount'    => $amount,
