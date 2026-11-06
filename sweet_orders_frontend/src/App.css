@@ -156,6 +156,23 @@
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
+.is-preloading .site-main *,
+.is-preloading .site-main *::before,
+.is-preloading .site-main *::after {
+  animation-play-state: paused !important;
+}
+.pre-note {
+  position: absolute;
+  bottom: 74px;
+  max-width: 300px;
+  margin: 0;
+  padding: 0 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  animation: pop-in 0.5s var(--ease) both;
+}
 .pre-count {
   position: absolute;
   bottom: 28px;

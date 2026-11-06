@@ -61,7 +61,31 @@ function refreshTokens(used) {
   return refreshing
 }
 
-export async function api(path, { method = 'GET', body, query, retry = true } = {}) {
+const loadStats = { started: 0, done: 0 }
+const loadListeners = new Set()
+
+function emitLoad() {
+  loadListeners.forEach((fn) => fn({ ...loadStats }))
+}
+
+export function onLoadProgress(fn) {
+  loadListeners.add(fn)
+  fn({ ...loadStats })
+  return () => loadListeners.delete(fn)
+}
+
+export async function api(path, options) {
+  loadStats.started += 1
+  emitLoad()
+  try {
+    return await request(path, options)
+  } finally {
+    loadStats.done += 1
+    emitLoad()
+  }
+}
+
+async function request(path, { method = 'GET', body, query, retry = true } = {}) {
   let url = `${API_URL}/api${path}`
   if (query) {
     const params = new URLSearchParams()
@@ -92,7 +116,7 @@ export async function api(path, { method = 'GET', body, query, retry = true } = 
   }
 
   if (res.status === 401 && retry && tokens?.refresh_token && !NO_RENEW.includes(path)) {
-    if (await refreshTokens(tokens)) return api(path, { method, body, query, retry: false })
+    if (await refreshTokens(tokens)) return request(path, { method, body, query, retry: false })
   }
 
   let data

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { onLoadProgress } from '../api/client'
 import { prefersReducedMotion, useScrollProgress } from '../lib/motion'
 
 export function Parallax({ speed = 60, className = '', children }) {
@@ -109,31 +110,70 @@ function markSeen() {
   }
 }
 
+const MIN_SHOW = 1000
+const SLOW_AFTER = 4000
+const MAX_WAIT = 15000
+const SETTLE = 300
+
+function pendingImages() {
+  return [...document.querySelectorAll('.site-main img')].filter((img) => !img.complete)
+}
+
 export function Preloader() {
   const [visible, setVisible] = useState(() => !readSeen() && !prefersReducedMotion())
   const [count, setCount] = useState(0)
+  const [slow, setSlow] = useState(false)
   const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
     if (!visible) return
+    const root = document.documentElement
+    root.classList.add('is-preloading')
+    const start = performance.now()
+    let stats = { started: 0, done: 0 }
+    let settledAt = 0
+    let imagesDone = false
+    let shown = 0
+    let finished = false
     let frame
     let timer
-    const start = performance.now()
-    const duration = 1100
+
+    const unsubscribe = onLoadProgress((s) => {
+      stats = s
+      settledAt = 0
+    })
+
+    const finish = () => {
+      if (finished) return
+      finished = true
+      setCount(100)
+      setLeaving(true)
+      markSeen()
+      root.classList.remove('is-preloading')
+      timer = setTimeout(() => setVisible(false), 650)
+    }
+
     const tick = (now) => {
-      const p = Math.min(1, (now - start) / duration)
-      setCount(Math.round(100 * (1 - Math.pow(1 - p, 3))))
-      if (p < 1) frame = requestAnimationFrame(tick)
-      else {
-        setLeaving(true)
-        markSeen()
-        timer = setTimeout(() => setVisible(false), 650)
-      }
+      const elapsed = now - start
+      const idle = stats.done === stats.started
+      if (idle && !settledAt) settledAt = now
+      const dataReady = idle && now - settledAt >= SETTLE && (stats.started > 0 || elapsed > 800)
+      if (dataReady && !imagesDone) imagesDone = pendingImages().length === 0
+      const ratio = stats.started ? stats.done / stats.started : 0
+      const target = dataReady ? (imagesDone ? 100 : 92) : Math.min(88, ratio * 88)
+      shown += (Math.max(target, Math.min(75, elapsed / 200)) - shown) * 0.12
+      setCount(Math.round(shown))
+      if (elapsed > SLOW_AFTER) setSlow(true)
+      if ((dataReady && imagesDone && elapsed >= MIN_SHOW && shown > 97) || elapsed >= MAX_WAIT) finish()
+      else frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
+
     return () => {
+      unsubscribe()
       cancelAnimationFrame(frame)
       clearTimeout(timer)
+      root.classList.remove('is-preloading')
     }
   }, [visible])
 
@@ -148,6 +188,7 @@ export function Preloader() {
         <strong>Clayanna's</strong>
         <span>Café · Sweet Orders</span>
       </div>
+      {slow && !leaving && <p className="pre-note">Waking up the kitchen… this can take a few seconds the first time.</p>}
       <div className="pre-count">{count}%</div>
     </div>
   )
