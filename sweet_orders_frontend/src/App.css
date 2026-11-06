@@ -1593,20 +1593,22 @@
   position: sticky;
   top: 0;
   align-self: start;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow-y: auto;
   background: var(--cocoa);
   color: var(--cream);
-  padding: 20px 14px;
+  padding: 20px 14px 0;
 }
 .admin-sidebar::after {
   content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
+  position: sticky;
   bottom: 0;
-  height: 10px;
-  background: linear-gradient(90deg, var(--butter) 0 20%, var(--caramel) 20% 40%, var(--cherry) 40% 60%, var(--berry) 60% 80%, var(--pink) 80%);
+  flex: none;
+  height: 30px;
+  margin: auto -14px 0;
+  background: linear-gradient(90deg, var(--butter) 0 20%, var(--caramel) 20% 40%, var(--cherry) 40% 60%, var(--berry) 60% 80%, var(--pink) 80%) bottom / 100% 10px no-repeat, var(--cocoa);
 }
 .admin-brand {
   font-family: var(--display);
@@ -2676,7 +2678,7 @@ td .allergen-checks .check {
     height: auto;
     max-height: 100vh;
     overflow-y: auto;
-    padding: 12px 14px 20px;
+    padding: 12px 14px 0;
   }
   .filters {
     padding: 12px;
