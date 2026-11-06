@@ -178,7 +178,8 @@ CREATE TABLE orders (
     id                INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     order_number      VARCHAR(20)   NOT NULL,
     user_id           INT UNSIGNED  NOT NULL,
-    slot_id           INT UNSIGNED  NOT NULL,
+    guest_name        VARCHAR(100)  NULL,
+    slot_id           INT UNSIGNED  NULL,
     fulfillment       ENUM('pickup','delivery') NOT NULL,
     delivery_address  TEXT          NULL,
     address_street    VARCHAR(255)  NULL,
@@ -201,6 +202,8 @@ CREATE TABLE orders (
                            'out_for_delivery','completed','cancelled')
                       NOT NULL DEFAULT 'pending_payment',
     payment_status    ENUM('unpaid','paid','failed','refunded') NOT NULL DEFAULT 'unpaid',
+    source            ENUM('online','walk_in','phone') NOT NULL DEFAULT 'online',
+    created_by        INT UNSIGNED  NULL,
     stock_taken       TINYINT(1)    NOT NULL DEFAULT 0,
     reschedule_count  TINYINT       NOT NULL DEFAULT 0,
     notes             TEXT          NULL,
@@ -222,6 +225,7 @@ CREATE TABLE orders (
     KEY idx_orders_status (status),
     KEY idx_orders_zone (zone_id),
     KEY idx_orders_prepared_by (prepared_by),
+    KEY idx_orders_created_by (created_by),
     CONSTRAINT fk_orders_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_orders_slot FOREIGN KEY (slot_id)
@@ -229,6 +233,8 @@ CREATE TABLE orders (
     CONSTRAINT fk_orders_zone FOREIGN KEY (zone_id)
         REFERENCES delivery_zones (id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_orders_prepared_by FOREIGN KEY (prepared_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_orders_created_by FOREIGN KEY (created_by)
         REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -440,6 +446,9 @@ CREATE TABLE password_resets (
     CONSTRAINT fk_password_resets_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO users (name, email, password, role, is_active) VALUES
+    ('Walk-in customer', 'walkin@sweet-orders.invalid', '!no-login', 'customer', 0);
 
 INSERT INTO delivery_zones (name, city, fee, is_active, sort_order) VALUES
 ('Poblacion',     'Sample City',  60.00, 1, 1),

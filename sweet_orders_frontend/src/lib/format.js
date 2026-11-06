@@ -47,6 +47,7 @@ export function clock(hhmm) {
 }
 
 export function slotLabel(o) {
+  if (!o.slot_id) return `Taken at the counter, ${longDate(o.slot_date)}, ${clock(o.start_time)}`
   return `${longDate(o.slot_date)}, ${clock(o.start_time)}–${clock(o.end_time)}`
 }
 
@@ -63,6 +64,9 @@ export const STATUS_LABELS = {
 
 export const EVENT_LABELS = {
   order_placed: 'Order placed',
+  order_placed_cash: 'Order placed (pay at counter)',
+  order_placed_paid: 'Order placed (paid)',
+  cash_received: 'Cash received',
   payment_confirmed: 'Payment received',
   preparing: 'Preparing',
   ready: 'Ready for pickup',
@@ -75,6 +79,8 @@ export const EVENT_LABELS = {
   slot_conflict: 'Slot conflict alert',
   stock_short: 'Stock alert',
 }
+
+export const SOURCE_LABELS = { online: 'Online', walk_in: 'Walk-in', phone: 'Phone' }
 
 export const PAYMENT_LABELS = { unpaid: 'Unpaid', paid: 'Paid', failed: 'Failed', refunded: 'Refunded' }
 

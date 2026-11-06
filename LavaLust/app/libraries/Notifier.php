@@ -8,12 +8,14 @@ class Notifier
     private const TEMPLATES = [
         'order_placed'      => ['Order {number} received', "Hi {name}, we received your order {number} for {schedule}. Total: {total}. Please complete payment to confirm it."],
         'order_placed_cash' => ['Order {number} confirmed: pay at the counter', "Hi {name}, your order {number} is confirmed for {schedule}. Please pay {total} in cash at the counter when you pick it up.{pickup}"],
+        'order_placed_paid' => ['Order {number} confirmed and paid', "Hi {name}, your order {number} is confirmed for {schedule}. We received your cash payment of {total}.{pickup}"],
         'cash_received'     => ['Cash payment received for {number}', "Hi {name}, we received your cash payment of {total} for order {number}. Thank you!"],
         'payment_confirmed' => ['Payment received for {number}', "Hi {name}, we received your payment of {total} for order {number}. We will start preparing it for {schedule}."],
         'preparing'         => ['Order {number} is being prepared', "Hi {name}, your order {number} is now being prepared."],
         'ready'             => ['Order {number} is ready for pickup', "Hi {name}, your order {number} is ready for pickup at Clayanna's Café ({schedule}).{pickup}"],
         'out_for_delivery'  => ['Order {number} is on the way', "Hi {name}, your order {number} is out for delivery and will arrive {schedule}."],
         'completed'         => ['Order {number} completed', "Hi {name}, your order {number} is complete. Thank you for ordering from Clayanna's Café! Tell us how it was: {review_url}"],
+        'completed_guest'   => ['Order {number} completed', "Hi {name}, your order {number} is complete. Thank you for ordering from Clayanna's Café!"],
         'rescheduled'       => ['Order {number} moved to a new time', "Hi {name}, your order {number} is now set for {schedule}. Orders can be moved online only once; contact us if you need another change."],
         'cancelled'         => ['Order {number} cancelled', "Hi {name}, your order {number} has been cancelled. Contact us if you have questions."],
         'refunded'          => ['Refund for order {number}', "Hi {name}, we refunded {refund} for your cancelled order {number}. Reference: {refund_reference}. It may take a few days to show in your account."],
@@ -29,7 +31,8 @@ class Notifier
         if (!isset(self::TEMPLATES[$event])) {
             return;
         }
-        [$subject, $message] = self::TEMPLATES[$event];
+        $template = $event === 'completed' && !empty($order['guest_name']) ? 'completed_guest' : $event;
+        [$subject, $message] = self::TEMPLATES[$template];
         $vars = [
             '{name}'     => $order['customer_name'] ?? 'there',
             '{number}'   => $order['order_number'],

@@ -36,7 +36,7 @@ class Users extends MY_Api_Controller
         ]);
         $this->call->model('User_model');
         $user = $this->User_model->find((int) $id);
-        if (!$user) {
+        if (!$user || $user['email'] === User_model::WALK_IN_EMAIL) {
             $this->api->respond_error('User not found.', 404);
         }
         $data = [];

@@ -2130,6 +2130,164 @@ td .allergen-checks .check {
   border-radius: var(--radius-sm);
   min-width: 0;
 }
+.new-order-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.new-order-product {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.new-order-product:hover:not(:disabled) {
+  border-color: var(--cocoa);
+}
+.new-order-product:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.new-order-product > span:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 1000px) {
+  .report-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.report-grid .report-table td:first-child {
+  white-space: normal;
+}
+.report-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 170px;
+  border-bottom: 2px solid var(--cocoa);
+}
+.report-bar-col {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 48px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.report-bar {
+  width: 100%;
+  background: var(--cherry);
+  border-radius: 3px 3px 0 0;
+}
+.report-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.report-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.report-orders {
+  min-width: 1080px;
+}
+@media print {
+  @page report {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  .report-page {
+    page: report;
+  }
+  .admin {
+    display: block;
+    min-height: 0;
+  }
+  .admin-sidebar {
+    display: none !important;
+  }
+  .admin-main {
+    padding: 0;
+    animation: none;
+  }
+  .report-page {
+    font-size: 9pt;
+  }
+  .report-page .stat {
+    background: #fff !important;
+    box-shadow: none;
+    padding: 6px 8px;
+  }
+  .report-page .stat strong {
+    font-size: 13pt;
+  }
+  .report-page .stat-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .report-bar {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .report-bars {
+    height: 110px;
+  }
+  .report-page .table-wrap {
+    overflow: visible;
+  }
+  .report-orders {
+    min-width: 0;
+    font-size: 7.5pt;
+  }
+  .report-orders th,
+  .report-orders td {
+    padding: 3px 2px;
+  }
+  .report-orders .badge {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: inherit;
+  }
+  .report-orders .small {
+    font-size: inherit;
+  }
+  .report-orders .nowrap {
+    white-space: normal;
+  }
+  .report-table tr,
+  .report-page .stat {
+    break-inside: avoid;
+  }
+  .report-section > h3 {
+    break-after: avoid;
+  }
+}
 .addon-picker legend {
   padding: 0 4px;
 }

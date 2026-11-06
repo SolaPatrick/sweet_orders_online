@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { clock, peso, shortDate, STATUS_LABELS } from '../../lib/format'
-import { Empty, ErrorBox, Field, Loader, Pagination, Segmented, StatusBadge, useApi } from '../../components/ui'
+import { Empty, ErrorBox, Field, Loader, Pagination, Segmented, SourceBadge, StatusBadge, useApi } from '../../components/ui'
 
 export default function Orders() {
   const [params, setParams] = useSearchParams()
@@ -23,9 +23,14 @@ export default function Orders() {
 
   return (
     <div className="stack">
-      <div>
-        <h1>Orders</h1>
-        <span className="muted">{counts.all ?? 0} orders</span>
+      <div className="row between wrap">
+        <div>
+          <h1>Orders</h1>
+          <span className="muted">{counts.all ?? 0} orders</span>
+        </div>
+        <Link to="/admin/new-order" className="btn btn-primary btn-small">
+          New order
+        </Link>
       </div>
       <Segmented
         className="wrap"
@@ -77,7 +82,9 @@ export default function Orders() {
                     <td>
                       {shortDate(o.slot_date)} · {clock(o.start_time)}
                     </td>
-                    <td>{o.customer_name}</td>
+                    <td>
+                      {o.customer_name} <SourceBadge source={o.source} />
+                    </td>
                     <td>{o.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</td>
                     <td>{o.item_count}</td>
                     <td>{peso(o.total)}</td>

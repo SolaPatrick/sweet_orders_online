@@ -11,6 +11,7 @@ class Order_model extends Model
         'address_street', 'address_barangay', 'address_city', 'address_landmark', 'zone_id',
         'recipient_name', 'recipient_phone', 'occasion', 'pickup_name', 'pickup_phone', 'claim_code',
         'prepared_by', 'prepared_at', 'cancel_reason', 'refund_amount', 'refund_reference', 'refunded_at',
+        'source', 'guest_name', 'created_by',
     ];
 
     public const LATE_PAYMENT_NOTE = 'Paid after hold expired; slot was full, needs a new slot';
@@ -92,12 +93,14 @@ class Order_model extends Model
                       o.address_street, o.address_barangay, o.address_city, o.address_landmark, o.zone_id,
                       o.recipient_name, o.recipient_phone, o.occasion, o.pickup_name, o.pickup_phone, o.claim_code,
                       o.prepared_by, o.prepared_at, o.cancel_reason, o.refund_amount, o.refund_reference, o.refunded_at,
+                      o.source, o.guest_name, o.created_by,
                       s.slot_date, s.start_time, s.end_time,
                       u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
-                      pu.name AS prepared_by_name')
-            ->inner_join('delivery_slots s', 's.id = o.slot_id')
+                      pu.name AS prepared_by_name, cb.name AS created_by_name')
+            ->left_join('delivery_slots s', 's.id = o.slot_id')
             ->inner_join('users u', 'u.id = o.user_id')
-            ->left_join('users pu', 'pu.id = o.prepared_by');
+            ->left_join('users pu', 'pu.id = o.prepared_by')
+            ->left_join('users cb', 'cb.id = o.created_by');
     }
 
     private function list_rows(?int $limit = null, int $offset = 0): array
@@ -143,6 +146,16 @@ class Order_model extends Model
             $o['needs_new_slot'] = in_array($o['id'], $flagged) && $open;
             $o['stock_short'] = in_array($o['id'], $short) && $open;
             $o['refund_due'] = $o['status'] === 'cancelled' && $o['payment_status'] === 'paid';
+            if ($o['guest_name'] !== null) {
+                $o['customer_name'] = $o['guest_name'];
+                $o['customer_email'] = null;
+                $o['customer_phone'] = null;
+            }
+            if ($o['slot_id'] === null) {
+                $o['slot_date'] = substr($o['created_at'], 0, 10);
+                $o['start_time'] = substr($o['created_at'], 11, 8);
+                $o['end_time'] = $o['start_time'];
+            }
             return $this->cast($o);
         }, $rows);
     }
@@ -228,7 +241,7 @@ class Order_model extends Model
     {
         $this->db->table('orders o')
             ->select_count('*', 'n')
-            ->inner_join('delivery_slots s', 's.id = o.slot_id')
+            ->left_join('delivery_slots s', 's.id = o.slot_id')
             ->inner_join('users u', 'u.id = o.user_id');
         $this->admin_filters($f);
         return (int) $this->db->get()['n'];
@@ -255,7 +268,7 @@ class Order_model extends Model
         if (!empty($f['q'])) {
             $like = '%' . $f['q'] . '%';
             $this->db->grouped(function ($db) use ($like) {
-                $db->like('o.order_number', $like)->or_like('u.name', $like)
+                $db->like('o.order_number', $like)->or_like('u.name', $like)->or_like('o.guest_name', $like)
                    ->or_like('u.email', $like)->or_like('o.contact_phone', $like)->or_like('o.contact_email', $like);
             });
         }
@@ -416,7 +429,7 @@ class Order_model extends Model
 
     public function cast(array $o): array
     {
-        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by', 'stock_taken', 'reschedule_count'] as $k) {
+        foreach (['id', 'user_id', 'slot_id', 'item_count', 'zone_id', 'prepared_by', 'created_by', 'stock_taken', 'reschedule_count'] as $k) {
             if (isset($o[$k])) $o[$k] = (int) $o[$k];
         }
         foreach (['subtotal', 'delivery_fee', 'total'] as $k) {

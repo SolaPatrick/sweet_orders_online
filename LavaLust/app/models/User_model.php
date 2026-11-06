@@ -3,6 +3,8 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 
 class User_model extends Model
 {
+    public const WALK_IN_EMAIL = 'walkin@sweet-orders.invalid';
+
     protected $table = 'users';
     protected $fillable = [
         'name', 'email', 'phone', 'password', 'role', 'is_active',
@@ -61,7 +63,7 @@ class User_model extends Model
 
     public function role_counts(): array
     {
-        $rows = $this->db->table('users')->select('role')->select_count('*', 'n')->group_by('role')->get_all(PDO::FETCH_KEY_PAIR);
+        $rows = $this->db->table('users')->select('role')->select_count('*', 'n')->where('email', '<>', self::WALK_IN_EMAIL)->group_by('role')->get_all(PDO::FETCH_KEY_PAIR);
         $out = ['all' => 0, 'customer' => 0, 'staff' => 0, 'admin' => 0];
         foreach ($rows as $role => $n) {
             $out[$role] = (int) $n;
@@ -85,6 +87,7 @@ class User_model extends Model
 
     private function admin_filters(array $f, string $p = ''): void
     {
+        $this->db->where("{$p}email", '<>', self::WALK_IN_EMAIL);
         if (!empty($f['role'])) {
             $f['role'] === 'team'
                 ? $this->db->in("{$p}role", ['staff', 'admin'])

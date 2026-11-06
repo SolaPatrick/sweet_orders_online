@@ -61,6 +61,7 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->get('/dashboard', 'Admin::dashboard');
 
         $router->get('/orders', 'Admin::orders');
+        $router->post('/orders', 'Orders::staff_create');
         $router->get('/orders/{id}', 'Admin::order')->where_number('id');
         $router->put('/orders/{id}/status', 'Admin::order_status')->where_number('id');
         $router->post('/orders/{id}/cash', 'Admin::order_cash')->where_number('id');
@@ -109,6 +110,7 @@ $router->group(['prefix' => '/api'], function ($router) {
         $router->post('/slots/block-date', 'Admin::block_date');
 
         $router->get('/payments', 'Admin::payments');
+        $router->get('/reports/sales', 'Reports::sales');
         $router->get('/notifications', 'Admin::notifications');
         $router->post('/notifications/{id}/resend', 'Admin::notification_resend')->where_number('id');
     });

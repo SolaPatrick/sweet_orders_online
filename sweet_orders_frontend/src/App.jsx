@@ -38,6 +38,8 @@ import Users from './pages/admin/Users'
 import DeliveryZones from './pages/admin/DeliveryZones'
 import Addons from './pages/admin/Addons'
 import SignInActivity from './pages/admin/SignInActivity'
+import SalesReport from './pages/admin/SalesReport'
+import NewOrder from './pages/admin/NewOrder'
 import Reviews from './pages/admin/Reviews'
 
 export default function App() {
@@ -73,6 +75,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="orders/:id" element={<AdminOrderDetail />} />
+        <Route path="new-order" element={<NewOrder />} />
         <Route path="products" element={<RequireAdmin><AdminProducts /></RequireAdmin>} />
         <Route path="products/new" element={<RequireAdmin><ProductForm /></RequireAdmin>} />
         <Route path="products/:id/edit" element={<RequireAdmin><ProductForm /></RequireAdmin>} />
@@ -81,6 +84,7 @@ export default function App() {
         <Route path="delivery-zones" element={<RequireAdmin><DeliveryZones /></RequireAdmin>} />
         <Route path="addons" element={<RequireAdmin><Addons /></RequireAdmin>} />
         <Route path="sign-in-activity" element={<RequireAdmin><SignInActivity /></RequireAdmin>} />
+        <Route path="sales-report" element={<RequireAdmin><SalesReport /></RequireAdmin>} />
         <Route path="payments" element={<RequireAdmin><Payments /></RequireAdmin>} />
         <Route path="reviews" element={<RequireAdmin><Reviews /></RequireAdmin>} />
         <Route path="users" element={<RequireAdmin><Users /></RequireAdmin>} />

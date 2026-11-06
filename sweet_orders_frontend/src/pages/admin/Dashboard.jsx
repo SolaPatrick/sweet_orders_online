@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { clock, peso, timeOnly, methodLabel } from '../../lib/format'
-import { Empty, ErrorBox, Loader, StatusBadge, useApi } from '../../components/ui'
+import { Empty, ErrorBox, Loader, SourceBadge, StatusBadge, useApi } from '../../components/ui'
 import StockQuickEdit from '../../components/StockQuickEdit'
 
 export default function Dashboard() {
@@ -157,7 +157,9 @@ export default function Dashboard() {
                           </span>
                         )}
                       </td>
-                      <td>{o.customer_name}</td>
+                      <td>
+                        {o.customer_name} <SourceBadge source={o.source} />
+                      </td>
                       <td>{o.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</td>
                       <td>
                         <StatusBadge status={o.status} />
@@ -206,7 +208,9 @@ export default function Dashboard() {
                       <Link to={`/admin/orders/${o.id}`}>{o.order_number}</Link>
                     </td>
                     <td>{timeOnly(o.created_at)}</td>
-                    <td>{o.customer_name}</td>
+                    <td>
+                      {o.customer_name} <SourceBadge source={o.source} />
+                    </td>
                     <td>{peso(o.total)}</td>
                     <td>{methodLabel(o.payment_method)}</td>
                     <td>

@@ -16,7 +16,7 @@ import {
   timeOnly,
   methodLabel,
 } from '../../lib/format'
-import { ErrorBox, Field, FormDialog, Loader, Notice, StatusBadge, Toggle, useApi } from '../../components/ui'
+import { ErrorBox, Field, FormDialog, Loader, Notice, SourceBadge, StatusBadge, Toggle, useApi } from '../../components/ui'
 import OrderHistory from '../../components/OrderHistory'
 import { AllergenLine } from '../../components/Allergens'
 import LineExtras from '../../components/LineExtras'
@@ -213,17 +213,20 @@ export default function OrderDetail() {
         <div className="stack">
           <section className="card">
             <h3>Customer</h3>
-            <p>{order.customer_name}</p>
-            <p className="muted">
-              {order.contact_phone} · {order.customer_email}
+            <p>
+              {order.customer_name} <SourceBadge source={order.source} />
             </p>
+            <p className="muted">{[order.contact_phone, order.customer_email].filter(Boolean).join(' · ') || 'No contact details'}</p>
+            {order.created_by_name && <p className="small">Entered by {order.created_by_name}</p>}
             {order.contact_email && order.contact_email !== order.customer_email && (
               <p className="small">Order updates go to: {order.contact_email}</p>
             )}
             <p className="muted small">
               {order.policy_accepted_at
                 ? `Agreed to the policies (version ${order.policy_version}) on ${dateTime(order.policy_accepted_at)}`
-                : 'Placed before the consent checkbox existed.'}
+                : order.source !== 'online'
+                  ? 'Entered by staff, so the online consent checkbox does not apply.'
+                  : 'Placed before the consent checkbox existed.'}
             </p>
           </section>
           {(order.recipient_name || order.occasion) && (

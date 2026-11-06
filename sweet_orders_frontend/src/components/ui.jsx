@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import { label, STATUS_LABELS } from '../lib/format'
+import { label, SOURCE_LABELS, STATUS_LABELS } from '../lib/format'
 
 export function useApi(path, query) {
   const queryKey = JSON.stringify(query || {})
@@ -46,6 +46,11 @@ export function Field({ label: text, error, hint, children, className = '' }) {
 
 export function StatusBadge({ status, map = STATUS_LABELS }) {
   return <span className={`badge badge-${status}`}>{label(map, status)}</span>
+}
+
+export function SourceBadge({ source }) {
+  if (!source || source === 'online') return null
+  return <span className="badge badge-preparing">{SOURCE_LABELS[source]}</span>
 }
 
 export function Loader({ text = 'Loading…' }) {

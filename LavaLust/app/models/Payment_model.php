@@ -56,13 +56,15 @@ class Payment_model extends Model
 
     public function admin_search(array $f, int $limit, int $offset): array
     {
-        $this->from_joined()->select('p.id, p.order_id, p.provider, p.checkout_session_id, p.reference, p.method, p.amount, p.status, p.paid_at, p.created_at, p.updated_at, o.order_number, u.name AS customer_name');
+        $this->from_joined()->select('p.id, p.order_id, p.provider, p.checkout_session_id, p.reference, p.method, p.amount, p.status, p.paid_at, p.created_at, p.updated_at, o.order_number, o.guest_name, u.name AS customer_name');
         $this->filters($f);
         $rows = $this->db->order_by('CONCAT(p.created_at, 1000000000 + p.id)', 'DESC')->limit($limit, $offset)->get_all();
         foreach ($rows as &$r) {
             $r['id'] = (int) $r['id'];
             $r['order_id'] = (int) $r['order_id'];
             $r['amount'] = (float) $r['amount'];
+            $r['customer_name'] = $r['guest_name'] ?? $r['customer_name'];
+            unset($r['guest_name']);
         }
         return $rows;
     }
@@ -98,7 +100,7 @@ class Payment_model extends Model
             $like = '%' . $f['q'] . '%';
             $this->db->grouped(function ($db) use ($like) {
                 $db->like('o.order_number', $like)->or_like('p.reference', $like)
-                   ->or_like('p.checkout_session_id', $like)->or_like('u.name', $like);
+                   ->or_like('p.checkout_session_id', $like)->or_like('u.name', $like)->or_like('o.guest_name', $like);
             });
         }
     }

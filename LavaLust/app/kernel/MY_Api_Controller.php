@@ -173,6 +173,27 @@ class MY_Api_Controller extends Controller
         }
     }
 
+    protected function record_cash(array $order, int $payment_id, float $received, string $reference, array $actor): bool
+    {
+        $updated = $this->db->table('payments')->where('id', $payment_id)->where('status', 'pending')->update([
+            'status'      => 'paid',
+            'method'      => 'cash',
+            'amount'      => $order['total'],
+            'reference'   => $reference !== '' ? $reference : 'CASH-' . $payment_id,
+            'paid_at'     => date('Y-m-d H:i:s'),
+            'received_by' => (int) $actor['id'],
+        ]);
+        if (!$updated) {
+            return false;
+        }
+        $change = round($received - $order['total'], 2);
+        $next = $order['status'] === 'awaiting_cash' ? 'paid' : $order['status'];
+        $this->Order_model->set_status((int) $order['id'], $next, 'paid');
+        $this->Order_model->add_history((int) $order['id'], $order['status'], $next, $actor['id'],
+            'Cash PHP ' . number_format($order['total'], 2) . " received by {$actor['name']}" . ($change > 0 ? ' (change PHP ' . number_format($change, 2) . ')' : ''));
+        return true;
+    }
+
     protected function mark_order_paid(int $payment_id, array $info = []): bool
     {
         $payment = $this->db->table('payments')->where('id', $payment_id)->get();

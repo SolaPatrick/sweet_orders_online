@@ -193,22 +193,10 @@ class Admin extends MY_Api_Controller
         $change = round((float) $in['amount'] - $order['total'], 2);
         $this->db->transaction();
         $this->lock_unchanged_order($order);
-        $updated = $this->db->table('payments')->where('id', $cash['id'])->where('status', 'pending')->update([
-            'status'      => 'paid',
-            'method'      => 'cash',
-            'amount'      => $order['total'],
-            'reference'   => $reference !== '' ? $reference : 'CASH-' . $cash['id'],
-            'paid_at'     => date('Y-m-d H:i:s'),
-            'received_by' => (int) $actor['id'],
-        ]);
-        if (!$updated) {
+        if (!$this->record_cash($order, (int) $cash['id'], (float) $in['amount'], $reference, $actor)) {
             $this->db->roll_back();
             $this->api->respond_error('This payment was already recorded.', 409);
         }
-        $next = $order['status'] === 'awaiting_cash' ? 'paid' : $order['status'];
-        $this->Order_model->set_status((int) $id, $next, 'paid');
-        $this->Order_model->add_history((int) $id, $order['status'], $next, $actor['id'],
-            'Cash PHP ' . number_format($order['total'], 2) . " received by {$actor['name']}" . ($change > 0 ? ' (change PHP ' . number_format($change, 2) . ')' : ''));
         $this->db->commit();
         $this->notify_order((int) $id, 'cash_received');
         $this->api->respond(['message' => 'Cash payment recorded.' . ($change > 0 ? ' Change to give: PHP ' . number_format($change, 2) . '.' : ''), 'data' => $this->Order_model->detail((int) $id, true)]);

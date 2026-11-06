@@ -38,38 +38,7 @@ class Orders extends MY_Api_Controller
         }
 
         $this->call->model(['Product_model', 'Slot_model', 'Order_model', 'Zone_model', 'Addon_model', 'Design_upload_model']);
-        $addon_list = $this->Addon_model->active_by_id();
-        $zone = null;
-        $delivery_fee = 0.0;
-        $address = [];
-        if ($in['fulfillment'] === 'delivery') {
-            if ($this->Zone_model->count_all() > 0) {
-                $this->validate($in, [
-                    'zone_id|Delivery area'       => 'required|pattern[int]',
-                    'address_street|Street'       => 'required|min_length[5]|max_length[255]',
-                    'address_landmark|Landmark'   => 'max_length[255]',
-                ]);
-                $zone = $this->Zone_model->find((int) $in['zone_id']);
-                if (!$zone || !(int) $zone['is_active']) {
-                    $this->fail_validation(['zone_id' => "We don't deliver to this area yet."], "We don't deliver to this area yet.");
-                }
-                $landmark = trim((string) ($in['address_landmark'] ?? ''));
-                $address = [
-                    'address_street'   => $in['address_street'],
-                    'address_barangay' => $zone['name'],
-                    'address_city'     => $zone['city'],
-                    'address_landmark' => $landmark !== '' ? $landmark : null,
-                    'zone_id'          => (int) $zone['id'],
-                ];
-                $address['delivery_address'] = implode(', ', [$in['address_street'], $zone['name'], $zone['city']])
-                    . ($landmark !== '' ? " (Landmark: {$landmark})" : '');
-                $delivery_fee = round((float) $zone['fee'], 2);
-            } else {
-                $this->validate($in, ['delivery_address|Delivery address' => 'required|min_length[10]|max_length[500]']);
-                $address = ['delivery_address' => $in['delivery_address']];
-                $delivery_fee = config_item('delivery_fee');
-            }
-        }
+        [$zone, $address, $delivery_fee] = $this->delivery_details($in);
 
         $this->Slot_model->release_expired_holds();
         $limit = (int) config_item('max_unpaid_orders');
@@ -77,110 +46,7 @@ class Orders extends MY_Api_Controller
             $this->api->respond_error("You already have {$limit} unpaid orders. Please pay for or cancel one of them in My orders before placing a new order.", 409);
         }
 
-        $lines = [];
-        $errors = [];
-        $subtotal = 0.0;
-        $lead_hours = 0;
-        $wanted = [];
-        foreach (array_values($in['items']) as $i => $item) {
-            $qty = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
-            $product = isset($item['product_id']) ? $this->Product_model->detail((int) $item['product_id']) : null;
-            if (!$product || $product['is_archived']) {
-                $errors["items.{$i}"] = 'This product no longer exists.';
-                continue;
-            }
-            if (!$product['is_available']) {
-                $errors["items.{$i}"] = "{$product['name']} is sold out.";
-                continue;
-            }
-            if ($qty === false || $qty < 1 || $qty > 50) {
-                $errors["items.{$i}"] = "Quantity for {$product['name']} must be 1 to 50.";
-                continue;
-            }
-            $message = trim((string) ($item['cake_message'] ?? ''));
-            $notes = trim((string) ($item['notes'] ?? ''));
-            if (mb_strlen($message) > 100 || mb_strlen($notes) > 255) {
-                $errors["items.{$i}"] = 'Cake message is limited to 100 characters and notes to 255.';
-                continue;
-            }
-            $wanted_addons = (array) ($item['addons'] ?? []);
-            $design_id = (int) ($item['design_upload_id'] ?? 0);
-            if ($product['product_type'] === 'ready_made' && ((array) ($item['option_ids'] ?? []) || $message !== '' || $wanted_addons || $design_id)) {
-                $errors["items.{$i}"] = "{$product['name']} is ready-made, so options, a cake message, add-ons or a design photo can't be added. Please remove it and add it again.";
-                continue;
-            }
-            if (($wanted_addons || $design_id) && !$product['is_customizable']) {
-                $errors["items.{$i}"] = "Add-ons and design photos are only for custom cakes, not {$product['name']}.";
-                continue;
-            }
-            $addons = [];
-            foreach ($wanted_addons as $a) {
-                $aid = (int) (is_array($a) ? ($a['id'] ?? 0) : $a);
-                if (!isset($addon_list[$aid])) {
-                    $errors["items.{$i}"] = "An add-on chosen for {$product['name']} is not available any more.";
-                    continue 2;
-                }
-                $text = $addon_list[$aid]['has_text'] && is_array($a) ? trim((string) ($a['text'] ?? '')) : '';
-                if (mb_strlen($text) > 150) {
-                    $errors["items.{$i}"] = "The {$addon_list[$aid]['name']} message is limited to 150 characters.";
-                    continue 2;
-                }
-                $addons[$aid] = [
-                    'addon_id'   => $aid,
-                    'addon_name' => $addon_list[$aid]['name'],
-                    'price'      => $addon_list[$aid]['price'],
-                    'text'       => $text !== '' ? $text : null,
-                ];
-            }
-            $design_url = null;
-            if ($design_id) {
-                $upload = $this->Design_upload_model->owned($design_id, (int) $user['id']);
-                if (!$upload) {
-                    $errors["items.{$i}"] = "The design photo for {$product['name']} could not be found. Please upload it again.";
-                    continue;
-                }
-                $design_url = $upload['url'];
-            }
-
-            $chosen = [];
-            $by_id = array_column($product['options'], null, 'id');
-            foreach ((array) ($item['option_ids'] ?? []) as $oid) {
-                if (!isset($by_id[(int) $oid])) {
-                    $errors["items.{$i}"] = "An option chosen for {$product['name']} is not available.";
-                    continue 2;
-                }
-                $opt = $by_id[(int) $oid];
-                $chosen[$opt['option_group']] = $opt;
-            }
-            foreach (array_unique(array_column($product['options'], 'option_group')) as $group) {
-                if (!isset($chosen[$group])) {
-                    $errors["items.{$i}"] = "Please choose a {$group} for {$product['name']}.";
-                    continue 2;
-                }
-            }
-
-            $unit = $product['base_price'] + array_sum(array_column($chosen, 'price_add')) + array_sum(array_column($addons, 'price'));
-            $line_total = round($unit * $qty, 2);
-            $subtotal += $line_total;
-            $lead_hours = max($lead_hours, $product['lead_time_hours']);
-            $wanted[$product['id']] = [
-                'product' => $product,
-                'index'   => $wanted[$product['id']]['index'] ?? $i,
-                'qty'     => ($wanted[$product['id']]['qty'] ?? 0) + $qty,
-            ];
-            $lines[] = [
-                'product_id'   => $product['id'],
-                'product_name' => $product['name'],
-                'unit_price'   => round($unit, 2),
-                'quantity'     => $qty,
-                'line_total'   => $line_total,
-                'cake_message' => $product['is_customizable'] && $message !== '' ? $message : null,
-                'notes'        => $notes !== '' ? $notes : null,
-                'design_photo_url' => $design_url,
-                'options'      => array_values($chosen),
-                'addons'       => array_values($addons),
-            ];
-        }
+        ['lines' => $lines, 'wanted' => $wanted, 'subtotal' => $subtotal, 'lead_hours' => $lead_hours, 'errors' => $errors] = $this->build_lines($in['items'], (int) $user['id']);
         if ($errors) {
             $this->fail_validation($errors, 'Some items in your cart need attention.');
         }
@@ -193,30 +59,7 @@ class Orders extends MY_Api_Controller
             $this->fail_validation(['slot_id' => "This slot is too soon. Your cart needs {$lead_hours} hours of preparation."]);
         }
 
-        $day = date('D, M j', strtotime($slot['slot_date']));
-        foreach ($wanted as $product_id => $w) {
-            $p = $w['product'];
-            if ($p['product_type'] === 'ready_made') {
-                if ($w['qty'] > $p['stock_qty']) {
-                    $errors["items.{$w['index']}"] = $p['stock_qty'] > 0
-                        ? "Only {$p['stock_qty']} {$p['name']} left."
-                        : "{$p['name']} is sold out today.";
-                }
-                continue;
-            }
-            if ($p['sold_out_date'] === $slot['slot_date']) {
-                $errors["items.{$w['index']}"] = "{$p['name']} is sold out for {$day}.";
-                continue;
-            }
-            if ($p['daily_limit'] !== null) {
-                $left = max(0, $p['daily_limit'] - $this->Product_model->sold_on((int) $product_id, $slot['slot_date']));
-                if ($w['qty'] > $left) {
-                    $errors["items.{$w['index']}"] = $left > 0
-                        ? "Only {$left} {$p['name']} left for {$day}."
-                        : "{$p['name']} is sold out for {$day}.";
-                }
-            }
-        }
+        $errors = $this->availability_errors($wanted, $slot);
         if ($errors) {
             $this->fail_validation($errors, 'Some items in your cart need attention.');
         }
@@ -236,28 +79,12 @@ class Orders extends MY_Api_Controller
             $this->response->send_json_error('That time slot just filled up or was closed. Please pick another one.', 409, ['errors' => ['slot_id' => 'This slot is full or closed.']]);
             exit;
         }
-        $limited = [];
-        foreach ($wanted as $product_id => $w) {
-            if ($w['product']['product_type'] !== 'ready_made' && $w['product']['daily_limit'] !== null) {
-                $limited[(int) $product_id] = $w;
-            }
-        }
-        ksort($limited);
-        foreach (array_keys($limited) as $product_id) {
-            $this->db->raw('SELECT id FROM products WHERE id = ? FOR UPDATE', [$product_id]);
-        }
+        $limited = $this->lock_limited($wanted);
         if ($this->Order_model->count_unpaid_for_user((int) $user['id']) >= $limit) {
             $this->db->roll_back();
             $this->api->respond_error("You already have {$limit} unpaid orders. Please pay for or cancel one of them in My orders before placing a new order.", 409);
         }
-        foreach ($limited as $product_id => $w) {
-            $left = max(0, $w['product']['daily_limit'] - $this->Product_model->sold_on($product_id, $slot['slot_date']));
-            if ($w['qty'] > $left) {
-                $errors["items.{$w['index']}"] = $left > 0
-                    ? "Only {$left} {$w['product']['name']} left for {$day}."
-                    : "{$w['product']['name']} is sold out for {$day}.";
-            }
-        }
+        $errors = $this->limit_errors($limited, $slot);
         if ($errors) {
             $this->db->roll_back();
             $this->fail_validation($errors, 'Some items in your cart need attention.');
@@ -320,6 +147,362 @@ class Orders extends MY_Api_Controller
             'order'   => $this->Order_model->detail($order_id),
             'payment' => $payment,
         ], 201);
+    }
+
+    public function staff_create()
+    {
+        $this->api->require_method('POST');
+        $actor = $this->user();
+        $this->api->rate_limit('staff-order:' . $actor['id'], 60, 60);
+        $in = $this->api->body();
+        $take_now = in_array($in['take_now'] ?? null, [true, 1, '1', 'true'], true);
+        $this->validate($in, [
+            'source|Order type'               => 'required|in_list["walk_in,phone"]',
+            'customer_name|Customer name'     => 'required|max_length[100]',
+            'contact_phone|Mobile number'     => [$take_now ? '' : 'required', self::MOBILE_PATTERN],
+            'contact_email|Email'             => 'valid_email|max_length[255]',
+            'fulfillment|Fulfillment'         => 'required|in_list["pickup,delivery"]',
+            'slot_id|Time slot'               => ($take_now ? '' : 'required|') . 'pattern[int]',
+            'payment|Payment'                 => 'required|in_list["cash_now,pay_at_pickup"]',
+            'amount_received|Amount received' => 'numeric|greater_than_equal_to[0]',
+            'reference|Receipt no.'           => 'max_length[100]',
+            'notes|Notes'                     => 'max_length[1000]',
+            'allergy_note|Allergy note'       => 'max_length[500]',
+            'items|Order items'               => 'required|pattern[array]',
+        ]);
+        $pickup = $in['fulfillment'] === 'pickup';
+        $cash_now = $in['payment'] === 'cash_now';
+        if ($take_now && $in['source'] !== 'walk_in') {
+            $this->fail_validation(['take_now' => 'A phone order needs a time slot.'], 'A phone order needs a time slot.');
+        }
+        if ($take_now && !$pickup) {
+            $this->fail_validation(['take_now' => 'Take now is only for orders handed over at the counter.'], 'Take now is only for orders handed over at the counter.');
+        }
+        if ($take_now && !$cash_now) {
+            $this->fail_validation(['payment' => 'Take now orders are paid in cash right away.'], 'Take now orders are paid in cash right away.');
+        }
+        if (!$cash_now && !$pickup) {
+            $this->fail_validation(['payment' => 'Pay at pickup is only for pickup orders.'], 'Pay at pickup is only for pickup orders.');
+        }
+        if (count($in['items']) > 30) {
+            $this->api->respond_error('This order has too many lines.', 422);
+        }
+
+        $this->call->model(['Product_model', 'Slot_model', 'Order_model', 'Zone_model', 'Addon_model', 'Design_upload_model', 'User_model']);
+        $account = $this->User_model->find_by_email(User_model::WALK_IN_EMAIL);
+        if (!$account) {
+            $this->api->respond_error('The walk-in account is missing. Please run the walk-in database update first.', 500);
+        }
+        [, $address, $delivery_fee] = $this->delivery_details($in);
+        $this->Slot_model->release_expired_holds();
+
+        ['lines' => $lines, 'wanted' => $wanted, 'subtotal' => $subtotal, 'lead_hours' => $lead_hours, 'errors' => $errors] = $this->build_lines($in['items'], (int) $actor['id']);
+        if ($errors) {
+            $this->fail_validation($errors, 'Some items need attention.');
+        }
+
+        $slot = null;
+        if (!$take_now) {
+            $slot = $this->Slot_model->find((int) $in['slot_id']);
+            if (!$slot || $slot['fulfillment'] !== $in['fulfillment']) {
+                $this->fail_validation(['slot_id' => 'Please choose a time slot for ' . $in['fulfillment'] . '.']);
+            }
+            if (strtotime($slot['slot_date'] . ' ' . $slot['start_time']) < time() + $lead_hours * 3600) {
+                $this->fail_validation(['slot_id' => "This slot is too soon. This order needs {$lead_hours} hours of preparation."]);
+            }
+        }
+        $errors = $this->availability_errors($wanted, $slot);
+        if ($errors) {
+            $this->fail_validation($errors, 'Some items need attention.');
+        }
+
+        $subtotal = round($subtotal, 2);
+        $total = round($subtotal + $delivery_fee, 2);
+        $received = round((float) ($in['amount_received'] ?? 0), 2);
+        if ($cash_now && $received < $total) {
+            $this->fail_validation(['amount_received' => 'The amount is less than the order total of PHP ' . number_format($total, 2) . '.']);
+        }
+        $name = trim((string) $in['customer_name']);
+        $phone = trim((string) ($in['contact_phone'] ?? ''));
+        $phone = $phone !== '' ? normalize_phone($phone) : null;
+        $text = function ($key) use ($in) {
+            $value = trim((string) ($in[$key] ?? ''));
+            return $value !== '' ? $value : null;
+        };
+
+        $this->db->transaction();
+        if ($slot && !$this->Slot_model->book_one((int) $slot['id'])) {
+            $this->db->roll_back();
+            $this->response->send_json_error('That time slot just filled up or was closed. Please pick another one.', 409, ['errors' => ['slot_id' => 'This slot is full or closed.']]);
+            exit;
+        }
+        $limited = $this->lock_limited($wanted);
+        $errors = $slot ? $this->limit_errors($limited, $slot) : [];
+        if ($errors) {
+            $this->db->roll_back();
+            $this->fail_validation($errors, 'Some items need attention.');
+        }
+        $email = $text('contact_email');
+        $order_id = $this->Order_model->create_with_items(array_merge([
+            'user_id'        => (int) $account['id'],
+            'guest_name'     => $name,
+            'source'         => $in['source'],
+            'created_by'     => (int) $actor['id'],
+            'slot_id'        => $slot ? (int) $slot['id'] : null,
+            'fulfillment'    => $in['fulfillment'],
+            'contact_phone'  => $phone,
+            'contact_email'  => $email !== null ? strtolower($email) : null,
+            'pickup_name'    => $pickup ? $name : null,
+            'pickup_phone'   => $pickup ? $phone : null,
+            'claim_code'     => $pickup && !$take_now ? sprintf('%04d', random_int(0, 9999)) : null,
+            'subtotal'       => $subtotal,
+            'delivery_fee'   => $delivery_fee,
+            'total'          => $total,
+            'status'         => 'awaiting_cash',
+            'payment_status' => 'unpaid',
+            'notes'          => $text('notes'),
+            'allergy_note'   => $text('allergy_note'),
+        ], $address), $lines);
+        $this->Order_model->add_history($order_id, null, 'awaiting_cash', $actor['id'], ($in['source'] === 'phone' ? 'Phone' : 'Walk-in') . " order entered by {$actor['name']}");
+        $short = $this->Product_model->take_stock($order_id);
+        if ($short) {
+            $this->db->roll_back();
+            $this->fail_validation(['items' => implode(', ', $short) . ' just sold out. Please update the order.'], 'Some items just sold out.');
+        }
+        $this->db->table('payments')->insert([
+            'order_id' => $order_id,
+            'provider' => 'cash',
+            'method'   => 'cash',
+            'amount'   => $total,
+            'status'   => 'pending',
+        ]);
+        $payment_id = (int) $this->db->last_id();
+        $change = 0.0;
+        if ($cash_now) {
+            $this->record_cash(['id' => $order_id, 'status' => 'awaiting_cash', 'total' => $total], $payment_id, $received, trim((string) ($in['reference'] ?? '')), $actor);
+            $change = round($received - $total, 2);
+        }
+        if ($take_now) {
+            $this->Order_model->change_status(['id' => $order_id, 'status' => 'paid'], 'completed', $actor['id'], 'Handed over at the counter');
+        }
+        $this->db->commit();
+
+        $this->notify_order($order_id, $take_now ? 'cash_received' : ($cash_now ? 'order_placed_paid' : 'order_placed_cash'));
+        $this->api->respond([
+            'message' => 'Order saved.' . ($change > 0 ? ' Change to give: PHP ' . number_format($change, 2) . '.' : ''),
+            'change'  => $change,
+            'data'    => $this->Order_model->detail($order_id, true),
+        ], 201);
+    }
+
+    private function delivery_details(array $in): array
+    {
+        $zone = null;
+        $delivery_fee = 0.0;
+        $address = [];
+        if ($in['fulfillment'] === 'delivery') {
+            if ($this->Zone_model->count_all() > 0) {
+                $this->validate($in, [
+                    'zone_id|Delivery area'       => 'required|pattern[int]',
+                    'address_street|Street'       => 'required|min_length[5]|max_length[255]',
+                    'address_landmark|Landmark'   => 'max_length[255]',
+                ]);
+                $zone = $this->Zone_model->find((int) $in['zone_id']);
+                if (!$zone || !(int) $zone['is_active']) {
+                    $this->fail_validation(['zone_id' => "We don't deliver to this area yet."], "We don't deliver to this area yet.");
+                }
+                $landmark = trim((string) ($in['address_landmark'] ?? ''));
+                $address = [
+                    'address_street'   => $in['address_street'],
+                    'address_barangay' => $zone['name'],
+                    'address_city'     => $zone['city'],
+                    'address_landmark' => $landmark !== '' ? $landmark : null,
+                    'zone_id'          => (int) $zone['id'],
+                ];
+                $address['delivery_address'] = implode(', ', [$in['address_street'], $zone['name'], $zone['city']])
+                    . ($landmark !== '' ? " (Landmark: {$landmark})" : '');
+                $delivery_fee = round((float) $zone['fee'], 2);
+            } else {
+                $this->validate($in, ['delivery_address|Delivery address' => 'required|min_length[10]|max_length[500]']);
+                $address = ['delivery_address' => $in['delivery_address']];
+                $delivery_fee = config_item('delivery_fee');
+            }
+        }
+        return [$zone, $address, $delivery_fee];
+    }
+
+    private function build_lines(array $items, int $uploader_id): array
+    {
+        $addon_list = $this->Addon_model->active_by_id();
+        $lines = [];
+        $errors = [];
+        $subtotal = 0.0;
+        $lead_hours = 0;
+        $wanted = [];
+        foreach (array_values($items) as $i => $item) {
+            $qty = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
+            $product = isset($item['product_id']) ? $this->Product_model->detail((int) $item['product_id']) : null;
+            if (!$product || $product['is_archived']) {
+                $errors["items.{$i}"] = 'This product no longer exists.';
+                continue;
+            }
+            if (!$product['is_available']) {
+                $errors["items.{$i}"] = "{$product['name']} is sold out.";
+                continue;
+            }
+            if ($qty === false || $qty < 1 || $qty > 50) {
+                $errors["items.{$i}"] = "Quantity for {$product['name']} must be 1 to 50.";
+                continue;
+            }
+            $message = trim((string) ($item['cake_message'] ?? ''));
+            $notes = trim((string) ($item['notes'] ?? ''));
+            if (mb_strlen($message) > 100 || mb_strlen($notes) > 255) {
+                $errors["items.{$i}"] = 'Cake message is limited to 100 characters and notes to 255.';
+                continue;
+            }
+            $wanted_addons = (array) ($item['addons'] ?? []);
+            $design_id = (int) ($item['design_upload_id'] ?? 0);
+            if ($product['product_type'] === 'ready_made' && ((array) ($item['option_ids'] ?? []) || $message !== '' || $wanted_addons || $design_id)) {
+                $errors["items.{$i}"] = "{$product['name']} is ready-made, so options, a cake message, add-ons or a design photo can't be added. Please remove it and add it again.";
+                continue;
+            }
+            if (($wanted_addons || $design_id) && !$product['is_customizable']) {
+                $errors["items.{$i}"] = "Add-ons and design photos are only for custom cakes, not {$product['name']}.";
+                continue;
+            }
+            $addons = [];
+            foreach ($wanted_addons as $a) {
+                $aid = (int) (is_array($a) ? ($a['id'] ?? 0) : $a);
+                if (!isset($addon_list[$aid])) {
+                    $errors["items.{$i}"] = "An add-on chosen for {$product['name']} is not available any more.";
+                    continue 2;
+                }
+                $text = $addon_list[$aid]['has_text'] && is_array($a) ? trim((string) ($a['text'] ?? '')) : '';
+                if (mb_strlen($text) > 150) {
+                    $errors["items.{$i}"] = "The {$addon_list[$aid]['name']} message is limited to 150 characters.";
+                    continue 2;
+                }
+                $addons[$aid] = [
+                    'addon_id'   => $aid,
+                    'addon_name' => $addon_list[$aid]['name'],
+                    'price'      => $addon_list[$aid]['price'],
+                    'text'       => $text !== '' ? $text : null,
+                ];
+            }
+            $design_url = null;
+            if ($design_id) {
+                $upload = $this->Design_upload_model->owned($design_id, $uploader_id);
+                if (!$upload) {
+                    $errors["items.{$i}"] = "The design photo for {$product['name']} could not be found. Please upload it again.";
+                    continue;
+                }
+                $design_url = $upload['url'];
+            }
+
+            $chosen = [];
+            $by_id = array_column($product['options'], null, 'id');
+            foreach ((array) ($item['option_ids'] ?? []) as $oid) {
+                if (!isset($by_id[(int) $oid])) {
+                    $errors["items.{$i}"] = "An option chosen for {$product['name']} is not available.";
+                    continue 2;
+                }
+                $opt = $by_id[(int) $oid];
+                $chosen[$opt['option_group']] = $opt;
+            }
+            foreach (array_unique(array_column($product['options'], 'option_group')) as $group) {
+                if (!isset($chosen[$group])) {
+                    $errors["items.{$i}"] = "Please choose a {$group} for {$product['name']}.";
+                    continue 2;
+                }
+            }
+
+            $unit = $product['base_price'] + array_sum(array_column($chosen, 'price_add')) + array_sum(array_column($addons, 'price'));
+            $line_total = round($unit * $qty, 2);
+            $subtotal += $line_total;
+            $lead_hours = max($lead_hours, $product['lead_time_hours']);
+            $wanted[$product['id']] = [
+                'product' => $product,
+                'index'   => $wanted[$product['id']]['index'] ?? $i,
+                'qty'     => ($wanted[$product['id']]['qty'] ?? 0) + $qty,
+            ];
+            $lines[] = [
+                'product_id'   => $product['id'],
+                'product_name' => $product['name'],
+                'unit_price'   => round($unit, 2),
+                'quantity'     => $qty,
+                'line_total'   => $line_total,
+                'cake_message' => $product['is_customizable'] && $message !== '' ? $message : null,
+                'notes'        => $notes !== '' ? $notes : null,
+                'design_photo_url' => $design_url,
+                'options'      => array_values($chosen),
+                'addons'       => array_values($addons),
+            ];
+        }
+        return ['lines' => $lines, 'wanted' => $wanted, 'subtotal' => $subtotal, 'lead_hours' => $lead_hours, 'errors' => $errors];
+    }
+
+    private function availability_errors(array $wanted, ?array $slot): array
+    {
+        $errors = [];
+        $day = $slot ? date('D, M j', strtotime($slot['slot_date'])) : '';
+        foreach ($wanted as $product_id => $w) {
+            $p = $w['product'];
+            if ($p['product_type'] === 'ready_made') {
+                if ($w['qty'] > $p['stock_qty']) {
+                    $errors["items.{$w['index']}"] = $p['stock_qty'] > 0
+                        ? "Only {$p['stock_qty']} {$p['name']} left."
+                        : "{$p['name']} is sold out today.";
+                }
+                continue;
+            }
+            if (!$slot) {
+                $errors["items.{$w['index']}"] = "{$p['name']} is made to order, so it needs a time slot.";
+                continue;
+            }
+            if ($p['sold_out_date'] === $slot['slot_date']) {
+                $errors["items.{$w['index']}"] = "{$p['name']} is sold out for {$day}.";
+                continue;
+            }
+            if ($p['daily_limit'] !== null) {
+                $left = max(0, $p['daily_limit'] - $this->Product_model->sold_on((int) $product_id, $slot['slot_date']));
+                if ($w['qty'] > $left) {
+                    $errors["items.{$w['index']}"] = $left > 0
+                        ? "Only {$left} {$p['name']} left for {$day}."
+                        : "{$p['name']} is sold out for {$day}.";
+                }
+            }
+        }
+        return $errors;
+    }
+
+    private function lock_limited(array $wanted): array
+    {
+        $limited = [];
+        foreach ($wanted as $product_id => $w) {
+            if ($w['product']['product_type'] !== 'ready_made' && $w['product']['daily_limit'] !== null) {
+                $limited[(int) $product_id] = $w;
+            }
+        }
+        ksort($limited);
+        foreach (array_keys($limited) as $product_id) {
+            $this->db->raw('SELECT id FROM products WHERE id = ? FOR UPDATE', [$product_id]);
+        }
+        return $limited;
+    }
+
+    private function limit_errors(array $limited, array $slot): array
+    {
+        $errors = [];
+        $day = date('D, M j', strtotime($slot['slot_date']));
+        foreach ($limited as $product_id => $w) {
+            $left = max(0, $w['product']['daily_limit'] - $this->Product_model->sold_on($product_id, $slot['slot_date']));
+            if ($w['qty'] > $left) {
+                $errors["items.{$w['index']}"] = $left > 0
+                    ? "Only {$left} {$w['product']['name']} left for {$day}."
+                    : "{$w['product']['name']} is sold out for {$day}.";
+            }
+        }
+        return $errors;
     }
 
     public function index()
