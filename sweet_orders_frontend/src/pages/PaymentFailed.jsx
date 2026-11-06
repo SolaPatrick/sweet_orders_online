@@ -10,7 +10,7 @@ export default function PaymentFailed() {
   const [busy, setBusy] = useState(false)
   const [payError, setPayError] = useState(null)
 
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="page" />
   if (error) return <div className="container page"><ErrorBox error={error} /></div>
   const order = data.data
 

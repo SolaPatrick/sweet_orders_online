@@ -422,7 +422,7 @@ export default function SalesReport() {
         Sales count on the day the payment was recorded, and refunds on the day the refund was recorded (Philippine time). Add-ons are already inside each subtotal. A cancelled order stays in gross paid until its refund is recorded.
       </p>
 
-      {!range ? null : loading ? <Loader /> : error ? <ErrorBox error={error} onRetry={reload} /> : <Report data={data} />}
+      {!range ? null : loading ? <Loader variant="stats" /> : error ? <ErrorBox error={error} onRetry={reload} /> : <Report data={data} />}
     </div>
   )
 }

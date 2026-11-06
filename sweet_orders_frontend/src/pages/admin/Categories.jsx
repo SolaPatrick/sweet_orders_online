@@ -58,7 +58,7 @@ export default function Categories() {
       <div className="two-col wide-left">
         <section>
           {loading ? (
-            <Loader />
+            <Loader variant="table" />
           ) : error ? (
             <ErrorBox error={error} onRetry={reload} />
           ) : data.data.length === 0 ? (

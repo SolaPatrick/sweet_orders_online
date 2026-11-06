@@ -331,7 +331,7 @@ export default function NewOrder() {
               <input type="search" value={search} placeholder="Product name" onChange={(e) => setSearch(e.target.value)} />
             </Field>
             {productsApi.loading ? (
-              <Loader />
+              <Loader variant="table" count={4} />
             ) : productsApi.error ? (
               <ErrorBox error={productsApi.error} onRetry={productsApi.reload} />
             ) : products.length === 0 ? (
@@ -423,7 +423,7 @@ export default function NewOrder() {
                   </div>
                 )}
                 {!dates ? (
-                  <Loader />
+                  <Loader variant="lines" />
                 ) : (
                   <SlotPicker
                     key={type}

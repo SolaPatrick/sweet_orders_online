@@ -160,6 +160,6 @@ export function optionText(options = []) {
 }
 
 export function methodLabel(method) {
-  const names = { cash: 'Cash at the counter', gcash: 'GCash', card: 'Card', paymaya: 'Maya', grab_pay: 'GrabPay', simulated: 'Test payment' }
+  const names = { cash: 'Cash at the counter', gcash: 'GCash', card: 'Card', paymaya: 'Maya', grab_pay: 'GrabPay', simulated: 'Online payment' }
   return method ? names[method] || method : '—'
 }

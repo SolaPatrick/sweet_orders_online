@@ -119,6 +119,9 @@ export default function SiteLayout() {
             </a>
             <span>0917 000 0000</span>
           </nav>
+          <p className="footer-note">
+            This website was made for a school project and is for educational purposes only. It is not an official online store of Clayanna's Café.
+          </p>
         </div>
       </footer>
     </div>

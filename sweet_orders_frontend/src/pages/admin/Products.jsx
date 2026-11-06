@@ -119,7 +119,7 @@ export default function Products() {
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={error} />
       {products.loading ? (
-        <Loader />
+        <Loader variant="table" />
       ) : products.error ? (
         <ErrorBox error={products.error} onRetry={products.reload} />
       ) : products.data.data.length === 0 ? (

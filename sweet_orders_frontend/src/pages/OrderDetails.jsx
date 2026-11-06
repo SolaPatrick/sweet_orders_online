@@ -35,7 +35,12 @@ export default function OrderDetails() {
   const [actionError, setActionError] = useState(null)
   const [notice, setNotice] = useState('')
 
-  if (loading && !data) return <Loader />
+  if (loading && !data)
+    return (
+      <div className="container page">
+        <Loader variant="detail" />
+      </div>
+    )
   if (error?.status === 404) return <NotFound />
   if (error) return <div className="container page"><ErrorBox error={error} onRetry={reload} /></div>
   const order = data.data
@@ -219,7 +224,7 @@ export default function OrderDetails() {
           <section className="card">
             <h3>{order.fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</h3>
             <p>{slotLabel(order)}</p>
-            <p className="muted">{order.fulfillment === 'pickup' ? "Clayanna's Café, 123 Mabini St." : order.delivery_address}</p>
+            <p className="muted">{order.fulfillment === 'pickup' ? "Clayanna's Café, " + CAFE.address : order.delivery_address}</p>
             {order.fulfillment === 'pickup' && order.pickup_name && (
               <p className="small">
                 Picked up by: {order.pickup_name}

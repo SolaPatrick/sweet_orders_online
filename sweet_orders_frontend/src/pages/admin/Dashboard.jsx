@@ -5,7 +5,7 @@ import StockQuickEdit from '../../components/StockQuickEdit'
 
 export default function Dashboard() {
   const { data, loading, error, reload } = useApi('/admin/dashboard')
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="stats" />
   if (error) return <ErrorBox error={error} onRetry={reload} />
   const {
     stats,

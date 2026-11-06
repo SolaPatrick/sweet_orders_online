@@ -249,7 +249,7 @@ export default function Checkout() {
           <section className="card">
             <h3>2. Date and time slot</h3>
             {!dates ? (
-              <Loader />
+              <Loader variant="lines" />
             ) : (
               <SlotPicker
                 key={fulfillment}

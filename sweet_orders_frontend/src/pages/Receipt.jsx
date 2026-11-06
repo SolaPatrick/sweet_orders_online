@@ -9,7 +9,7 @@ export default function Receipt({ admin = false }) {
   const { data, loading, error, reload } = useApi(admin ? `/admin/orders/${id}` : `/orders/${id}`)
   const back = admin ? `/admin/orders/${id}` : `/orders/${id}`
 
-  if (loading && !data) return <Loader />
+  if (loading && !data) return <Loader variant="page" />
   if (error?.status === 404) return <NotFound />
   if (error) return <div className="container page"><ErrorBox error={error} onRetry={reload} /></div>
   const order = data.data

@@ -79,7 +79,7 @@ export default function DeliveryZones() {
       <div className="two-col wide-left">
         <section>
           {loading && !data ? (
-            <Loader />
+            <Loader variant="table" />
           ) : error ? (
             <ErrorBox error={error} onRetry={reload} />
           ) : zones.length === 0 ? (

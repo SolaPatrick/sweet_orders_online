@@ -32,7 +32,7 @@ export default function Login() {
     <div className="container page narrow-sm">
       <form className="card auth-card" onSubmit={submit} noValidate>
         <h1>Log in</h1>
-        <p className="muted">For customers and café staff. Admins go straight to the admin panel.</p>
+        <p className="muted">Welcome back! Log in to order and track your cakes.</p>
         <ErrorBox error={errors.email || errors.password ? null : error} />
         <Field label="Email" error={errors.email}>
           <input type="email" autoComplete="email" value={form.email} placeholder="you@email.com" onChange={(e) => setForm({ ...form, email: e.target.value })} />

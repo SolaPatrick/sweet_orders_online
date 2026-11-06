@@ -5,7 +5,7 @@ import { Loader } from './ui'
 export function RequireAuth({ children }) {
   const { user, loading } = useAuth()
   const location = useLocation()
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="page" />
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   return children
 }
@@ -13,7 +13,7 @@ export function RequireAuth({ children }) {
 export function RequireStaff({ children }) {
   const { user, loading, isStaff } = useAuth()
   const location = useLocation()
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="page" />
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   if (!isStaff) return <Navigate to="/403" replace />
   return children
@@ -22,7 +22,7 @@ export function RequireStaff({ children }) {
 export function RequireAdmin({ children }) {
   const { user, loading, isAdmin } = useAuth()
   const location = useLocation()
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="page" />
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   if (!isAdmin) return <Navigate to="/403" replace />
   return children

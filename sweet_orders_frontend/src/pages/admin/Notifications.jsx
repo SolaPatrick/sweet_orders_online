@@ -45,7 +45,7 @@ export default function Notifications() {
       <Notice onClose={() => setNotice('')}>{notice}</Notice>
       <ErrorBox error={actionError} />
       {loading ? (
-        <Loader />
+        <Loader variant="table" />
       ) : error ? (
         <ErrorBox error={error} onRetry={reload} />
       ) : data.data.length === 0 ? (
@@ -108,7 +108,7 @@ export default function Notifications() {
           <Pagination meta={data.meta} onPage={(p) => set('page', p)} />
         </>
       )}
-      <p className="muted small">Logged means the message was saved but not sent because no email or SMS account is set up (test mode). Failed messages can be resent.</p>
+      <p className="muted small">Logged means the message was saved but not sent because no email or SMS account is set up. Failed messages can be resent.</p>
     </div>
   )
 }

@@ -18,7 +18,7 @@ export default function Slots() {
 
   const [selected, setSelected] = useState(null)
   const [edit, setEdit] = useState({ capacity: '', is_blocked: false })
-  const [gen, setGen] = useState({ from: todayISO(), to: todayISO(13), times: '09:00, 10:00, 11:00, 13:00, 14:00, 15:00, 16:00', duration_minutes: '60', capacity: '5', fulfillment: 'both', skip_monday: true })
+  const [gen, setGen] = useState({ from: todayISO(), to: todayISO(13), times: '09:00, 10:00, 11:00, 13:00, 14:00, 15:00, 16:00', duration_minutes: '60', capacity: '5', fulfillment: 'both', skip_monday: false })
   const [blockDate, setBlockDate] = useState('')
   const [errors, setErrors] = useState({})
   const [actionError, setActionError] = useState(null)
@@ -93,7 +93,7 @@ export default function Slots() {
       <div className="two-col wide-left">
         <section className="stack">
           {loading && !data ? (
-            <Loader />
+            <Loader variant="table" />
           ) : error ? (
             <ErrorBox error={error} onRetry={reload} />
           ) : (
@@ -212,7 +212,7 @@ export default function Slots() {
             </div>
             <label className="check">
               <input type="checkbox" checked={gen.skip_monday} onChange={(e) => setGen({ ...gen, skip_monday: e.target.checked })} />
-              Skip Mondays (café closed)
+              Skip Mondays
             </label>
             <div>
               <button type="submit" className="btn btn-primary" disabled={busy}>

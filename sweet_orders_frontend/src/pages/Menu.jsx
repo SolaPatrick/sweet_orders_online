@@ -114,7 +114,7 @@ export default function Menu() {
 
         <section>
           {products.loading ? (
-            <Loader />
+            <Loader variant="cards" />
           ) : products.error ? (
             <ErrorBox error={products.error} onRetry={products.reload} />
           ) : products.data.data.length === 0 ? (

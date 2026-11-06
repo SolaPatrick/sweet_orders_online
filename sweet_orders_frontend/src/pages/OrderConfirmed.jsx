@@ -24,7 +24,7 @@ export default function OrderConfirmed() {
   }, [id, tries])
 
   if (error) return <div className="container page"><ErrorBox error={error} /></div>
-  if (!order) return <Loader />
+  if (!order) return <Loader variant="page" />
   const paid = order.payment_status === 'paid'
   const method = order.payments.find((p) => p.status === 'paid')?.method
   const cashDue = !paid && isCashOrder(order) && order.status !== 'cancelled'

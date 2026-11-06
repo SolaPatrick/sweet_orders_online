@@ -63,7 +63,7 @@ export default function RescheduleOrder({ order, onDone, onClose }) {
       </div>
       <ErrorBox error={error} />
       {!dates ? (
-        <Loader />
+        <Loader variant="lines" />
       ) : (
         <SlotPicker days={dates.days} date={date} onDate={setDate} slots={slots} slotId={chosen} onSlot={setSlotId} fulfillment={order.fulfillment} />
       )}

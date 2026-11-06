@@ -40,7 +40,7 @@ export default function OrderDetail() {
   const [form, setForm] = useState({})
   const [formErrors, setFormErrors] = useState({})
 
-  if (loading && !data) return <Loader />
+  if (loading && !data) return <Loader variant="detail" />
   if (error) return <ErrorBox error={error} onRetry={reload} />
   const order = data.data
   const payment = order.payments.find((p) => p.status === 'paid') || order.payments[0]

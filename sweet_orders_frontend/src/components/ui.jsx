@@ -53,10 +53,102 @@ export function SourceBadge({ source }) {
   return <span className="badge badge-preparing">{SOURCE_LABELS[source]}</span>
 }
 
-export function Loader({ text = 'Loading…' }) {
+const SKELETON_COUNTS = { cards: 6, table: 6, lines: 3, tiles: 5 }
+const LINE_WIDTHS = ['w-90', 'w-70', 'w-60', 'w-80', 'w-50']
+
+function Bone({ className = '' }) {
+  return <span className={`bone ${className}`} aria-hidden="true" />
+}
+
+function SkeletonLines({ count = 3 }) {
+  return Array.from({ length: count }, (_, i) => <Bone key={i} className={`bone-line ${LINE_WIDTHS[i % LINE_WIDTHS.length]}`} />)
+}
+
+function SkeletonBody({ variant, count }) {
+  const list = Array.from({ length: count }, (_, i) => i)
+  if (variant === 'cards') {
+    return (
+      <div className="skeleton-cards">
+        {list.map((i) => (
+          <div key={i} className="skeleton-card">
+            <Bone className="bone-photo" />
+            <div className="skeleton-card-body">
+              <Bone className="bone-line w-70" />
+              <Bone className="bone-line w-40" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (variant === 'table') {
+    return (
+      <div className="skeleton-box skeleton-table">
+        {list.map((i) => (
+          <div key={i} className="skeleton-row">
+            <Bone className="bone-line w-80" />
+            <Bone className="bone-line w-60" />
+            <Bone className="bone-line w-50" />
+            <Bone className="bone-line w-40" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (variant === 'tiles') {
+    return (
+      <div className="skeleton-tiles">
+        {list.map((i) => (
+          <Bone key={i} className="bone-tile" />
+        ))}
+      </div>
+    )
+  }
+  if (variant === 'stats') {
+    return (
+      <>
+        <Bone className="bone-title" />
+        <div className="skeleton-stats">
+          {[0, 1, 2, 3].map((i) => (
+            <Bone key={i} className="bone-stat" />
+          ))}
+        </div>
+        <Bone className="bone-chart" />
+      </>
+    )
+  }
+  if (variant === 'detail') {
+    return (
+      <div className="skeleton-detail">
+        <Bone className="bone-photo bone-rounded" />
+        <div>
+          <Bone className="bone-title" />
+          <SkeletonLines count={4} />
+          <div className="skeleton-box skeleton-gap">
+            <SkeletonLines count={3} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (variant === 'page') {
+    return (
+      <div className="skeleton-page">
+        <Bone className="bone-title" />
+        <div className="skeleton-box">
+          <SkeletonLines count={5} />
+        </div>
+      </div>
+    )
+  }
+  return <SkeletonLines count={count} />
+}
+
+export function Loader({ text = 'Loading…', variant = 'lines', count }) {
   return (
-    <div className="state-box" role="status">
-      <span className="spinner" aria-hidden="true" /> {text}
+    <div className="skeleton" role="status" aria-live="polite">
+      <span className="sr-only">{text}</span>
+      <SkeletonBody variant={variant} count={count ?? SKELETON_COUNTS[variant] ?? 3} />
     </div>
   )
 }

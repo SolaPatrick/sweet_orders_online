@@ -4,7 +4,13 @@ export const CAFE = {
   name: "Clayanna's Café",
   email: 'hello@clayannascafe.ph',
   phone: '0917 000 0000',
-  address: '123 Mabini St., Poblacion',
+  address: 'Macasaet Building, Roxas Drive, Brgy. Guinobatan, Calapan City',
+  fullAddress: 'Macasaet Building, Roxas Drive, Brgy. Guinobatan, Calapan City, Oriental Mindoro',
+  landmark: 'The yellow building along Roxas Drive',
+  hours: 'Open daily, 8:00 AM to 10:00 PM (Saturdays until 10:30 PM)',
+  schedule: { open: 480, close: { default: 1320, Sat: 1350 } },
+  mapEmbed: 'https://www.openstreetmap.org/export/embed.html?bbox=121.1773%2C13.3847%2C121.1834%2C13.3893&layer=mapnik&marker=13.3869752%2C121.1803488',
+  mapLink: 'https://www.google.com/maps/search/?api=1&query=13.3869752%2C121.1803488',
 }
 
 export const POLICIES = [

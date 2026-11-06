@@ -1,44 +1,112 @@
 import { Link } from 'react-router-dom'
+import cafePhoto from '../assets/cafe.jpg'
+import { CAFE } from '../lib/policies'
+import { Marquee, Reveal, SpinBadge } from '../components/Motion'
+import { CafeMap, CopyAddress, OpenBadge } from '../components/CafeInfo'
+
+const FACTS = [
+  {
+    title: 'Baked to order',
+    text: 'Every cake starts when you order it, so it reaches you fresh, with the size, flavor and message you picked.',
+    tone: 'butter',
+  },
+  {
+    title: 'Pickup at the counter',
+    text: 'Choose a time slot, then show your 4-digit claim code at the counter when you arrive.',
+    tone: 'caramel',
+  },
+  {
+    title: 'Delivery around Calapan',
+    text: 'We deliver around Calapan City. The fee depends on your barangay and is shown at checkout.',
+    tone: 'mint',
+  },
+]
 
 export default function About() {
   return (
-    <div className="container page">
-      <section className="hero">
-        <div>
-          <h1>About Clayanna's Café</h1>
-          <p className="muted">A neighborhood bakery making custom cakes and fresh pastries since 2018. Every cake is baked to order.</p>
+    <div className="about-page">
+      <section className="page-hero tone-butter">
+        <div className="container page-hero-inner">
+          <div className="page-hero-copy">
+            <p className="eyebrow rise" style={{ '--delay': '100ms' }}>
+              About us
+            </p>
+            <h1 className="page-title">
+              <span className="line">
+                <span style={{ '--delay': '150ms' }}>Your neighborhood</span>
+              </span>
+              <span className="line">
+                <span style={{ '--delay': '300ms' }}>cake shop</span>
+              </span>
+            </h1>
+            <p className="page-lead rise" style={{ '--delay': '450ms' }}>
+              Clayanna's Café is a small bakery in Calapan City making custom cakes and fresh pastries for birthdays, celebrations and everyday merienda.
+            </p>
+            <div className="actions rise" style={{ '--delay': '600ms' }}>
+              <Link to="/menu" className="btn btn-primary btn-lg">
+                See the menu
+              </Link>
+              <a href="#find-us" className="btn btn-light btn-lg">
+                Find us
+              </a>
+            </div>
+          </div>
+          <div className="page-hero-media rise" style={{ '--delay': '300ms' }}>
+            <div className="photo-frame">
+              <img src={cafePhoto} alt="Front of Clayanna's Café on Roxas Drive at sunset, with outdoor tables" />
+            </div>
+            <div className="photo-badge">
+              <SpinBadge text="Baked fresh daily">Made with love</SpinBadge>
+            </div>
+          </div>
         </div>
-        <div className="hero-photo placeholder">Café photo</div>
       </section>
-      <div className="grid-3">
-        <div className="card">
-          <h3>Opening hours</h3>
-          <p className="muted">Tue to Sun, 8:00 AM to 7:00 PM. Closed on Mondays.</p>
+
+      <Marquee items={['Custom cakes', 'Fresh pastries', 'Pickup or delivery', 'Open daily', 'Calapan City']} />
+
+      <section className="container about-sec">
+        <Reveal as="h2" className="display-md">
+          What we do
+        </Reveal>
+        <div className="fact-grid">
+          {FACTS.map((f, i) => (
+            <Reveal key={f.title} className={`fact-card tone-${f.tone}`} delay={i * 100}>
+              <span className="fact-num">0{i + 1}</span>
+              <h3>{f.title}</h3>
+              <p>{f.text}</p>
+            </Reveal>
+          ))}
         </div>
-        <div className="card">
-          <h3>Pickup</h3>
-          <p className="muted">Pick up your order at the counter during your chosen time slot.</p>
+      </section>
+
+      <section id="find-us" className="container about-sec">
+        <Reveal as="h2" className="display-md">
+          Find us
+        </Reveal>
+        <div className="find-layout">
+          <Reveal>
+            <CafeMap />
+          </Reveal>
+          <Reveal className="find-card" delay={120}>
+            <OpenBadge />
+            <div>
+              <span className="find-label">Address</span>
+              <p className="find-value">{CAFE.fullAddress}</p>
+              <p className="muted small">{CAFE.landmark}.</p>
+            </div>
+            <div>
+              <span className="find-label">Hours</span>
+              <p className="find-value">{CAFE.hours}</p>
+            </div>
+            <div className="actions">
+              <a href={CAFE.mapLink} target="_blank" rel="noreferrer" className="btn btn-primary">
+                Get directions
+              </a>
+              <CopyAddress />
+            </div>
+          </Reveal>
         </div>
-        <div className="card">
-          <h3>Delivery</h3>
-          <p className="muted">Within the city for a flat fee. Custom cakes need 48 hours of notice.</p>
-        </div>
-      </div>
-      <div className="two-col">
-        <iframe
-          className="map"
-          title="Map"
-          loading="lazy"
-          src="https://www.openstreetmap.org/export/embed.html?bbox=120.97%2C14.58%2C121.0%2C14.6&layer=mapnik"
-        />
-        <div className="card">
-          <h3>Find us</h3>
-          <p className="muted">123 Mabini St., Poblacion, City, Philippines</p>
-          <Link to="/menu" className="btn btn-primary">
-            See the menu
-          </Link>
-        </div>
-      </div>
+      </section>
     </div>
   )
 }

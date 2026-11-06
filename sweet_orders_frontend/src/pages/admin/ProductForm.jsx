@@ -112,7 +112,7 @@ export default function ProductForm() {
     setBusy(false)
   }
 
-  if (loading) return <Loader />
+  if (loading) return <Loader variant="page" />
   const optionError = Object.entries(errors).find(([k]) => k.startsWith('options.'))?.[1]
 
   return (

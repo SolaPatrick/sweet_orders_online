@@ -56,7 +56,7 @@ export default function Addons() {
       <div className="two-col wide-left">
         <section>
           {loading && !data ? (
-            <Loader />
+            <Loader variant="table" />
           ) : error ? (
             <ErrorBox error={error} onRetry={reload} />
           ) : data.data.length === 0 ? (

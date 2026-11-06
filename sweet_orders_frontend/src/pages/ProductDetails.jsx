@@ -13,7 +13,12 @@ const GROUPS = ['size', 'flavor', 'frosting']
 export default function ProductDetails() {
   const { id } = useParams()
   const { data, loading, error, reload } = useApi(`/products/${id}`)
-  if (loading) return <Loader />
+  if (loading)
+    return (
+      <div className="container page">
+        <Loader variant="detail" />
+      </div>
+    )
   if (error?.status === 404) return <NotFound />
   if (error) return <div className="container page"><ErrorBox error={error} onRetry={reload} /></div>
   return <ProductView product={data.data} />
@@ -239,7 +244,7 @@ function ProductReviews({ productId }) {
     <section id="reviews" className="stack reviews">
       <h2>Reviews</h2>
       {loading && !data ? (
-        <Loader />
+        <Loader variant="lines" />
       ) : error ? (
         <ErrorBox error={error} onRetry={reload} />
       ) : data.data.length === 0 ? (

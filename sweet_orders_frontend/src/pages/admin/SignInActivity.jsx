@@ -60,7 +60,7 @@ export default function SignInActivity() {
         </div>
       </div>
       {loading && !data ? (
-        <Loader />
+        <Loader variant="table" />
       ) : error ? (
         <ErrorBox error={error} onRetry={reload} />
       ) : data.data.length === 0 ? (
